@@ -26,7 +26,7 @@ function generateSeed(str) {
   return h;
 }
 
-const PaperPreview = forwardRef(({ questions, targetCode, isShuffled, onRemoveQuestion, paperMode }, ref) => {
+const PaperPreview = forwardRef(({ questions, targetCode, isShuffled, onRemoveQuestion, paperMode, activeQuestionId, onSelectQuestion }, ref) => {
   const [pages, setPages] = useState([]);
   const measureRef = useRef(null);
 
@@ -89,12 +89,14 @@ const PaperPreview = forwardRef(({ questions, targetCode, isShuffled, onRemoveQu
     // 297mm = ~1122px. Subtract padding, header, footer.
     const PAGE1_MAX_COL_HEIGHT = 1020; 
     const PAGEX_MAX_COL_HEIGHT = 1020; 
+    const HEADER_HEIGHT_REDUCTION = 60; // Standard header height reduction for column height calculations
 
     const newPages = [];
     let currentPage = [];
     let currentColumn = 1;
     let currentHeight = 0;
     let pageIndex = 0;
+    let currentPageHeaderHeight = 0;
 
     items.forEach((el, index) => {
       const item = flatItems[index];
@@ -104,11 +106,20 @@ const PaperPreview = forwardRef(({ questions, targetCode, isShuffled, onRemoveQu
       const maxH = pageIndex === 0 ? PAGE1_MAX_COL_HEIGHT : PAGEX_MAX_COL_HEIGHT;
 
       if (item.type === 'header') {
-        // Headers reset to column 1 and take space from both columns
-        currentColumn = 1;
-        currentHeight += h + 20; // Extra buffer for header margins
+        // Force every subject header (Chemistry, Biology, Physics) to start a new page
+        // to match Physics' clean top-of-page layout, prevent page overflow, and
+        // solve Chrome column splitting glitches.
+        if (currentPage.length > 0) {
+          newPages.push(currentPage);
+          currentPage = [];
+          currentColumn = 1;
+          currentHeight = 0;
+          pageIndex++; // Increment page index
+        }
+        currentPageHeaderHeight = HEADER_HEIGHT_REDUCTION;
       } else {
-        if (currentHeight + h > maxH) {
+        const availableColH = maxH - currentPageHeaderHeight;
+        if (currentHeight + h > availableColH) {
           if (currentColumn === 1) {
             currentColumn = 2;
             currentHeight = h;
@@ -118,6 +129,7 @@ const PaperPreview = forwardRef(({ questions, targetCode, isShuffled, onRemoveQu
             currentPage = [];
             currentColumn = 1;
             currentHeight = h;
+            currentPageHeaderHeight = 0; // New page starts with no header unless explicitly added
             pageIndex++; // Increment page index
           }
         } else {
@@ -139,15 +151,30 @@ const PaperPreview = forwardRef(({ questions, targetCode, isShuffled, onRemoveQu
       return <h3 key={item.id} className="section-header">{item.title}</h3>;
     }
     
+    const isActive = item.id === activeQuestionId;
+    
     return (
-      <div key={item.id} className="question-item">
+      <div 
+        key={item.id} 
+        className={`question-item ${isActive ? 'active' : ''}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (onSelectQuestion) {
+            onSelectQuestion(item.sectionKey, item);
+          }
+        }}
+        style={{ cursor: onSelectQuestion ? 'pointer' : 'default' }}
+      >
         <div className="question-item-inner" style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
           <button 
             className="delete-btn delete-btn-overlay no-print" 
-            onClick={() => onRemoveQuestion && onRemoveQuestion(item.sectionKey, item.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemoveQuestion && onRemoveQuestion(item.sectionKey, item.id);
+            }}
             title="Remove question"
             style={{
-              backgroundColor: 'var(--danger-color)', color: 'white', border: 'none', borderRadius: '50%',
+              backgroundColor: 'var(--danger-color)', color: 'white', border: 'none', borderRadius: '8px',
               width: '24px', height: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center',
               justifyContent: 'center', padding: 0
             }}
@@ -259,37 +286,46 @@ const PaperPreview = forwardRef(({ questions, targetCode, isShuffled, onRemoveQu
                 <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '50%', height: '50%', backgroundImage: 'url(/companylogo.jpeg)', backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', opacity: 0.05, zIndex: 0, pointerEvents: 'none' }} />
               </div>
             )}
-            {pages.map((pageItems, pageIndex) => (
-            <div key={`page-${pageIndex}`} className="paper page-container" style={{ position: 'relative' }}>
-              {/* WATERMARK LOGO */}
-              <div style={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: '50%', /* not so much big */
-                height: '50%',
-                backgroundImage: 'url(/companylogo.jpeg)',
-                backgroundSize: 'contain',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
-                opacity: 0.08, /* faint watermark */
-                zIndex: 0,
-                pointerEvents: 'none'
-              }} />
-              
-              <div className="questions-container" style={{ columnFill: 'auto', height: '1020px', position: 'relative', zIndex: 1 }}>
-                {pageItems.map(item => renderItem(item))}
-              </div>
-              
-              <div className="paper-footer" style={{ position: 'absolute', bottom: '10mm', left: '0', right: '0', textAlign: 'center', fontSize: '12px' }}>
-                <div style={{ fontWeight: 'bold' }}>Paper Code: {targetCode || 'None'} - Page {paperMode === 'full' ? pageIndex + 2 : pageIndex + 1}</div>
-                <div style={{ marginTop: '2px', fontSize: '10px', color: '#555' }}>
-                  &copy; {new Date().getFullYear()} Medix Institute Doda | Official Website: https://medxinstitue-doda.netlify.app/
+            {pages.map((pageItems, pageIndex) => {
+              const hasHeader = pageItems[0]?.type === 'header';
+              const headerItem = hasHeader ? pageItems[0] : null;
+              const questionItems = hasHeader ? pageItems.slice(1) : pageItems;
+              const containerHeight = hasHeader ? (1020 - 60) : 1020;
+
+              return (
+                <div key={`page-${pageIndex}`} className="paper page-container" style={{ position: 'relative' }}>
+                  {/* WATERMARK LOGO */}
+                  <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: '50%',
+                    height: '50%',
+                    backgroundImage: 'url(/companylogo.jpeg)',
+                    backgroundSize: 'contain',
+                    backgroundPosition: 'center',
+                    backgroundRepeat: 'no-repeat',
+                    opacity: 0.08,
+                    zIndex: 0,
+                    pointerEvents: 'none'
+                  }} />
+                  
+                  {hasHeader && renderItem(headerItem)}
+                  
+                  <div className="questions-container" style={{ columnFill: 'auto', height: `${containerHeight}px`, position: 'relative', zIndex: 1 }}>
+                    {questionItems.map(item => renderItem(item))}
+                  </div>
+                  
+                  <div className="paper-footer" style={{ position: 'absolute', bottom: '10mm', left: '0', right: '0', textAlign: 'center', fontSize: '12px' }}>
+                    <div style={{ fontWeight: 'bold' }}>Paper Code: {targetCode || 'None'} - Page {paperMode === 'full' ? pageIndex + 2 : pageIndex + 1}</div>
+                    <div style={{ marginTop: '2px', fontSize: '10px', color: '#555' }}>
+                      &copy; {new Date().getFullYear()} Medix Institute Doda | Official Website: https://medxinstitute-doda.netlify.app/
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          ))}
+              );
+            })}
           </>
         )}
       </main>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { X, UploadCloud, Download, ShieldCheck } from 'lucide-react';
+import CustomAlert from './CustomAlert';
 
 export default function PDFRebrander({ onClose }) {
   const [targetCode, setTargetCode] = useState('A');
@@ -9,6 +10,7 @@ export default function PDFRebrander({ onClose }) {
   const [bottomErase, setBottomErase] = useState(50);
   const [removeFirstPage, setRemoveFirstPage] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [customAlert, setCustomAlert] = useState(null);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -17,7 +19,13 @@ export default function PDFRebrander({ onClose }) {
 
   const handleProcess = async () => {
     if (!competitorPdf) {
-      alert("Please upload a competitor PDF first!");
+      setCustomAlert({
+        title: 'No PDF Uploaded',
+        message: 'Please upload a competitor\'s PDF file first to rebrand.',
+        type: 'alert',
+        variant: 'warning',
+        confirmText: 'Okay'
+      });
       return;
     }
 
@@ -186,85 +194,128 @@ export default function PDFRebrander({ onClose }) {
 
     } catch (err) {
       console.error("Error rebranding PDF:", err);
-      alert("There was an error processing the PDF. Please try again.");
+      setCustomAlert({
+        title: 'Rebranding Failed',
+        message: 'There was an error processing and rebranding the PDF. Please try again with a valid PDF.',
+        type: 'alert',
+        variant: 'danger',
+        confirmText: 'Okay'
+      });
       setIsProcessing(false);
     }
   };
 
   return (
     <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(15, 23, 42, 0.85)',
-      backdropFilter: 'blur(8px)', zIndex: 1000,
+      position: 'fixed', inset: 0,
+      backgroundColor: 'rgba(15, 23, 42, 0.75)',
+      backdropFilter: 'blur(12px)', 
+      WebkitBackdropFilter: 'blur(12px)',
+      zIndex: 1000,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '20px'
+      padding: '20px',
+      animation: 'overlayFadeIn 0.3s ease'
     }}>
       <div style={{
-        backgroundColor: 'white', borderRadius: '16px', width: '100%', maxWidth: '600px',
-        boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', overflow: 'hidden'
+        backgroundColor: '#1e293b', 
+        borderRadius: '24px', 
+        width: '100%', 
+        maxWidth: '600px',
+        boxShadow: '0 25px 80px rgba(0, 0, 0, 0.5), 0 0 40px rgba(139, 92, 246, 0.15)',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        overflow: 'hidden',
+        color: '#f8fafc',
+        maxHeight: '90vh',
+        display: 'flex',
+        flexDirection: 'column',
+        animation: 'cardSlideUp 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)'
       }}>
         {/* Header */}
-        <div style={{ padding: '24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(to right, #8b5cf6, #d946ef)', color: 'white' }}>
+        <div style={{ padding: '24px 30px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(to right, #8b5cf6, #d946ef)', color: 'white' }}>
           <div>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <ShieldCheck size={28} /> Rebrand Competitor PDF
+            <h2 style={{ fontSize: '1.4rem', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <ShieldCheck size={26} /> Rebrand Competitor PDF
             </h2>
-            <p style={{ margin: '4px 0 0 0', opacity: 0.9, fontSize: '0.95rem' }}>Erase competitor branding and convert it into a Medix paper.</p>
+            <p style={{ margin: '4px 0 0 0', opacity: 0.9, fontSize: '0.9rem' }}>Erase competitor branding and convert it into a Medix paper.</p>
           </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '50%', width: '36px', height: '36px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'white', padding: '6px', transition: 'all 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'} onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}>
             <X size={20} />
           </button>
         </div>
 
-        <div style={{ padding: '30px' }}>
+        <div style={{ padding: '30px', overflowY: 'auto', flex: 1 }}>
           
           <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px', color: '#1e293b' }}>1. Target Paper Code (for Cover Page)</label>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '8px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>1. Target Paper Code (for Cover Page)</label>
             <input 
               type="text" 
               value={targetCode}
               onChange={(e) => setTargetCode(e.target.value)}
               placeholder="e.g. A, B, C"
-              style={{ width: '100%', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '1rem' }}
+              style={{ width: '100%', padding: '12px 16px', border: '1px solid #334155', borderRadius: '8px', backgroundColor: '#0f172a', color: 'white', fontSize: '1rem', outline: 'none', transition: 'all 0.25s' }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#8b5cf6';
+                e.target.style.boxShadow = '0 0 0 4px rgba(139, 92, 246, 0.2)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#334155';
+                e.target.style.boxShadow = 'none';
+              }}
             />
           </div>
 
           <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px', color: '#1e293b' }}>2. Upload Competitor PDF</label>
-            <div style={{ border: '2px dashed #cbd5e1', borderRadius: '8px', padding: '20px', textAlign: 'center', backgroundColor: '#f8fafc', position: 'relative' }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '8px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>2. Upload Competitor PDF</label>
+            <div style={{ 
+              border: `1.5px dashed ${competitorPdf ? '#10b981' : '#334155'}`, 
+              borderRadius: '12px', 
+              padding: '24px 20px', 
+              textAlign: 'center', 
+              backgroundColor: competitorPdf ? 'rgba(16, 185, 129, 0.05)' : '#0f172a', 
+              position: 'relative',
+              transition: 'all 0.25s ease-in-out',
+              boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)'
+            }}
+            onMouseOver={(e) => {
+              if (!competitorPdf) e.currentTarget.style.borderColor = '#8b5cf6';
+            }}
+            onMouseOut={(e) => {
+              if (!competitorPdf) e.currentTarget.style.borderColor = '#334155';
+            }}
+            >
               <input 
                 type="file" 
                 accept=".pdf" 
                 onChange={handleFileUpload}
-                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', zIndex: 10 }}
               />
-              <UploadCloud size={32} color={competitorPdf ? "#10b981" : "#94a3b8"} style={{ marginBottom: '10px' }} />
+              <UploadCloud size={36} color={competitorPdf ? "#10b981" : "#64748b"} style={{ marginBottom: '10px' }} />
               {competitorPdf ? (
-                <div style={{ color: '#10b981', fontWeight: 'bold' }}>{competitorPdf.name} uploaded!</div>
+                <div style={{ color: '#10b981', fontWeight: '700', fontSize: '0.95rem' }}>{competitorPdf.name} uploaded!</div>
               ) : (
-                <div style={{ color: '#64748b' }}>Click or drag to upload the PDF file</div>
+                <div style={{ color: '#64748b', fontSize: '0.95rem', fontWeight: '500' }}>Click or drag to upload the PDF file</div>
               )}
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#f1f5f9', padding: '16px', borderRadius: '8px', marginBottom: '24px' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '16px', color: '#334155' }}>3. Rebranding Settings</h3>
+          <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', marginBottom: '24px', border: '1px solid rgba(255,255,255,0.03)' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: '750', marginBottom: '16px', color: '#f1f5f9' }}>3. Rebranding Settings</h3>
             
-            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', cursor: 'pointer' }}>
-              <input type="checkbox" checked={removeFirstPage} onChange={(e) => setRemoveFirstPage(e.target.checked)} style={{ width: '18px', height: '18px', accentColor: '#8b5cf6' }} />
-              <span style={{ fontSize: '0.95rem', fontWeight: '500' }}>Delete Competitor's Cover Page (Page 1)</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', cursor: 'pointer', selectOrder: 'none' }}>
+              <input type="checkbox" checked={removeFirstPage} onChange={(e) => setRemoveFirstPage(e.target.checked)} style={{ width: '18px', height: '18px', accentColor: '#8b5cf6', cursor: 'pointer' }} />
+              <span style={{ fontSize: '0.95rem', fontWeight: '600', color: '#cbd5e1' }}>Delete Competitor's Cover Page (Page 1)</span>
             </label>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '6px', color: '#64748b' }}>Top Eraser Height (px)</label>
-                <input type="number" value={topErase} onChange={(e) => setTopErase(Number(e.target.value))} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>Erases competitor top logos</p>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', marginBottom: '6px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Top Eraser Height (px)</label>
+                <input type="number" value={topErase} onChange={(e) => setTopErase(Number(e.target.value))} style={{ width: '100%', padding: '10px 12px', border: '1px solid #334155', borderRadius: '8px', backgroundColor: '#1e293b', color: 'white', outline: 'none' }} onFocus={(e) => e.target.style.borderColor = '#8b5cf6'} onBlur={(e) => e.target.style.borderColor = '#334155'} />
+                <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '6px' }}>Erases competitor top logos</p>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', marginBottom: '6px', color: '#64748b' }}>Bottom Eraser Height (px)</label>
-                <input type="number" value={bottomErase} onChange={(e) => setBottomErase(Number(e.target.value))} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>Erases competitor footers</p>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', marginBottom: '6px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Bottom Eraser Height (px)</label>
+                <input type="number" value={bottomErase} onChange={(e) => setBottomErase(Number(e.target.value))} style={{ width: '100%', padding: '10px 12px', border: '1px solid #334155', borderRadius: '8px', backgroundColor: '#1e293b', color: 'white', outline: 'none' }} onFocus={(e) => e.target.style.borderColor = '#8b5cf6'} onBlur={(e) => e.target.style.borderColor = '#334155'} />
+                <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '6px' }}>Erases competitor footers</p>
               </div>
             </div>
           </div>
@@ -274,15 +325,44 @@ export default function PDFRebrander({ onClose }) {
             disabled={isProcessing}
             style={{
               width: '100%', padding: '16px', background: 'linear-gradient(to right, #8b5cf6, #d946ef)',
-              color: 'white', border: 'none', borderRadius: '8px', fontSize: '1.1rem', fontWeight: 'bold',
+              color: 'white', border: 'none', borderRadius: '12px', fontSize: '1.05rem', fontWeight: 'bold',
               cursor: isProcessing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-              boxShadow: '0 10px 15px -3px rgba(139, 92, 246, 0.3)', transition: 'all 0.2s', opacity: isProcessing ? 0.7 : 1
+              boxShadow: '0 10px 20px -3px rgba(139, 92, 246, 0.35)', transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)', opacity: isProcessing ? 0.7 : 1
+            }}
+            onMouseOver={(e) => {
+              if (!isProcessing) {
+                e.currentTarget.style.background = 'linear-gradient(to right, #7c3aed, #db2777)';
+                e.currentTarget.style.boxShadow = '0 12px 25px -3px rgba(139, 92, 246, 0.5)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }
+            }}
+            onMouseOut={(e) => {
+              if (!isProcessing) {
+                e.currentTarget.style.background = 'linear-gradient(to right, #8b5cf6, #d946ef)';
+                e.currentTarget.style.boxShadow = '0 10px 20px -3px rgba(139, 92, 246, 0.35)';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }
             }}
           >
             {isProcessing ? 'Rebranding PDF...' : <><Download size={22} /> Erase Brands & Download</>}
           </button>
         </div>
       </div>
+      {customAlert && (
+        <CustomAlert
+          title={customAlert.title}
+          message={customAlert.message}
+          type={customAlert.type}
+          variant={customAlert.variant}
+          confirmText={customAlert.confirmText}
+          cancelText={customAlert.cancelText}
+          onConfirm={() => {
+            customAlert.onConfirm?.();
+            setCustomAlert(null);
+          }}
+          onCancel={() => setCustomAlert(null)}
+        />
+      )}
     </div>
   );
 }
