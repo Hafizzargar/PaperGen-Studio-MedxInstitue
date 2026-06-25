@@ -97,7 +97,7 @@ export default function PDFMerger({ onClose }) {
     }
 
     // Footer
-    page.drawText(`© ${new Date().getFullYear()} Medix Institute Doda | Official Website: https://medxinstitue-doda.netlify.app/`, {
+    page.drawText(`© ${new Date().getFullYear()} Medix Institute Doda | Official Website: https://medxinstitute-doda.netlify.app/`, {
       x: 100, y: 30, size: 9, font: font, color: rgb(0.3, 0.3, 0.3)
     });
   };

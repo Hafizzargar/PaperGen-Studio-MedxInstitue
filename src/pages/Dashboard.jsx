@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { FileText, ArrowRight, BookOpen, FlaskConical, Dna, Layers, FolderOpen, ShieldCheck } from 'lucide-react';
 import PDFMerger from '../components/PDFMerger';
 import PDFRebrander from '../components/PDFRebrander';
@@ -301,15 +301,60 @@ export default function Dashboard() {
       </div>
 
       {/* Footer */}
-      <footer style={{ marginTop: 'auto', paddingTop: '40px', width: '100%', maxWidth: '1200px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#64748b', fontSize: '0.9rem', borderTop: '1px solid #e2e8f0' }}>
+      <footer style={{ 
+        marginTop: 'auto', 
+        paddingTop: '40px', 
+        paddingBottom: '20px',
+        width: '100%', 
+        maxWidth: '1200px', 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        color: '#64748b', 
+        fontSize: '0.9rem', 
+        borderTop: '1px solid #e2e8f0',
+        flexWrap: 'wrap',
+        gap: '20px'
+      }}>
         <div>
           <strong>Medix Institute Doda</strong>
           <p style={{ margin: '4px 0 0 0' }}>Jammu and Kashmir</p>
         </div>
+        
+        {/* Policy navigation links */}
+        <div style={{ display: 'flex', gap: '24px' }}>
+          <Link 
+            to="/copyright" 
+            style={{ 
+              color: '#64748b', 
+              textDecoration: 'none', 
+              fontWeight: '500',
+              transition: 'color 0.2s ease'
+            }}
+            onMouseOver={(e) => e.target.style.color = '#3b82f6'}
+            onMouseOut={(e) => e.target.style.color = '#64748b'}
+          >
+            Copyright Policy
+          </Link>
+          <Link 
+            to="/privacy" 
+            style={{ 
+              color: '#64748b', 
+              textDecoration: 'none', 
+              fontWeight: '500',
+              transition: 'color 0.2s ease'
+            }}
+            onMouseOver={(e) => e.target.style.color = '#3b82f6'}
+            onMouseOut={(e) => e.target.style.color = '#64748b'}
+          >
+            Privacy & Data Protection
+          </Link>
+        </div>
+
         <div style={{ textAlign: 'right' }}>
           <p style={{ margin: '0 0 4px 0' }}>&copy; {new Date().getFullYear()} All Rights Reserved.</p>
-          <a href="https://medxinstitue-doda.netlify.app/" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: '600' }}>
-            medxinstitue-doda.netlify.app
+          <a href="https://medxinstitute-doda.netlify.app/" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: '600' }}>
+            medxinstitute-doda.netlify.app
           </a>
         </div>
       </footer>

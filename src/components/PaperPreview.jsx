@@ -190,7 +190,7 @@ const PaperPreview = forwardRef(({ questions, targetCode, isShuffled, onRemoveQu
               </div>
             )}
             {item.options && item.options.some(opt => opt.trim() !== '') && (
-              <div className="question-options" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '8px' }}>
+              <div className="question-options">
                 {item.options.map((opt, i) => opt.trim() ? (
                   <div key={i} className="option-item">({i + 1}) {opt}</div>
                 ) : <div key={i}></div>)}
