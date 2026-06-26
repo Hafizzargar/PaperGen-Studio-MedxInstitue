@@ -1,4 +1,4 @@
-import React, { forwardRef, useState, useLayoutEffect, useRef, useEffect } from 'react';
+import React, { forwardRef, useState, useLayoutEffect, useRef, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
 
 // A simple deterministic pseudo-random number generator
@@ -47,26 +47,28 @@ const PaperPreview = forwardRef(({ questions, targetCode, isShuffled, onRemoveQu
     return copy;
   };
 
-  const physicsArray = getShuffledArray(questions.physics, targetCode);
-  const chemistryArray = getShuffledArray(questions.chemistry, targetCode);
-  const biologyArray = getShuffledArray(questions.biology, targetCode);
-
-  // Flatten the questions into a single array
-  const flatItems = [];
-  let globalIndex = 1;
-  
-  if (physicsArray.length > 0) {
-    flatItems.push({ type: 'header', title: 'Physics', id: 'hdr-physics', sectionKey: 'physics' });
-    physicsArray.forEach(q => flatItems.push({ type: 'question', number: globalIndex++, sectionKey: 'physics', ...q }));
-  }
-  if (chemistryArray.length > 0) {
-    flatItems.push({ type: 'header', title: 'Chemistry', id: 'hdr-chemistry', sectionKey: 'chemistry' });
-    chemistryArray.forEach(q => flatItems.push({ type: 'question', number: globalIndex++, sectionKey: 'chemistry', ...q }));
-  }
-  if (biologyArray.length > 0) {
-    flatItems.push({ type: 'header', title: 'Biology', id: 'hdr-biology', sectionKey: 'biology' });
-    biologyArray.forEach(q => flatItems.push({ type: 'question', number: globalIndex++, sectionKey: 'biology', ...q }));
-  }
+  // Flatten the questions into a single array, memoized to preserve reference integrity
+  const flatItems = useMemo(() => {
+    const flat = [];
+    const physicsArray = getShuffledArray(questions.physics, targetCode);
+    const chemistryArray = getShuffledArray(questions.chemistry, targetCode);
+    const biologyArray = getShuffledArray(questions.biology, targetCode);
+    
+    let globalIndex = 1;
+    if (physicsArray.length > 0) {
+      flat.push({ type: 'header', title: 'Physics', id: 'hdr-physics', sectionKey: 'physics' });
+      physicsArray.forEach(q => flat.push({ type: 'question', number: globalIndex++, sectionKey: 'physics', ...q }));
+    }
+    if (chemistryArray.length > 0) {
+      flat.push({ type: 'header', title: 'Chemistry', id: 'hdr-chemistry', sectionKey: 'chemistry' });
+      chemistryArray.forEach(q => flat.push({ type: 'question', number: globalIndex++, sectionKey: 'chemistry', ...q }));
+    }
+    if (biologyArray.length > 0) {
+      flat.push({ type: 'header', title: 'Biology', id: 'hdr-biology', sectionKey: 'biology' });
+      biologyArray.forEach(q => flat.push({ type: 'question', number: globalIndex++, sectionKey: 'biology', ...q }));
+    }
+    return flat;
+  }, [questions, targetCode, isShuffled]);
 
   // A tiny delay to allow images to load before measurement
   const [measurementTrigger, setMeasurementTrigger] = useState(0);
@@ -79,7 +81,7 @@ const PaperPreview = forwardRef(({ questions, targetCode, isShuffled, onRemoveQu
 
   useLayoutEffect(() => {
     if (!measureRef.current || flatItems.length === 0) {
-      setPages([]);
+      setPages(prev => prev.length === 0 ? prev : []);
       return;
     }
 
@@ -100,6 +102,8 @@ const PaperPreview = forwardRef(({ questions, targetCode, isShuffled, onRemoveQu
 
     items.forEach((el, index) => {
       const item = flatItems[index];
+      if (!item) return; // Safeguard if mismatch happens
+      
       // getBoundingClientRect is more accurate than offsetHeight
       const h = el.getBoundingClientRect().height + 15; // 15px buffer for margins
       
