@@ -338,7 +338,7 @@ const OMRScanner = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', color: '#1e293b', fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', color: '#1e293b', fontFamily: 'system-ui, sans-serif', overflowX: 'hidden' }}>
       <style>{`
         @media (max-width: 768px) {
           .omr-scanner-layout {
@@ -391,12 +391,40 @@ const OMRScanner = () => {
           }
           .omr-student-banner {
             grid-template-columns: repeat(2, 1fr) !important;
+            padding: 16px 20px !important;
+            border-radius: 16px !important;
+            gap: 12px !important;
+          }
+          .omr-scanner-header {
+            padding: 16px 16px !important;
+            gap: 12px !important;
+          }
+          .omr-results-header {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 12px !important;
+            text-align: center !important;
+          }
+          .omr-results-header button {
+            width: 100% !important;
+            text-align: center !important;
+          }
+          .omr-card-mobile-padding {
+            padding: 20px 16px !important;
+            border-radius: 16px !important;
+          }
+          .omr-table-wrapper {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+          }
+          .omr-table-wrapper table {
+            min-width: 550px !important;
           }
         }
       `}</style>
       
       {/* Header */}
-      <div style={{
+      <div className="omr-scanner-header" style={{
         backgroundColor: '#1e1b4b',
         color: 'white',
         padding: '20px 40px',
@@ -606,7 +634,7 @@ const OMRScanner = () => {
             </div>
 
             {/* Rules Card */}
-            <div style={{ background: 'white', borderRadius: '20px', padding: '30px', boxShadow: '0 10px 30px -10px rgba(0,0,0,0.05)' }}>
+            <div className="omr-card-mobile-padding" style={{ background: 'white', borderRadius: '20px', padding: '30px', boxShadow: '0 10px 30px -10px rgba(0,0,0,0.05)' }}>
               <h2 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <Settings size={22} color="#3b82f6" /> Evaluation Rules
               </h2>
@@ -775,7 +803,7 @@ const OMRScanner = () => {
 
         {/* Step 2: Scan */}
         {activeStep === 2 && (
-          <div style={{ background: 'white', borderRadius: '24px', padding: '40px', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)', textAlign: 'center' }}>
+          <div className="omr-card-mobile-padding" style={{ background: 'white', borderRadius: '24px', padding: '40px', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)', textAlign: 'center' }}>
             <h2 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '12px', color: '#1e293b' }}>Upload Completed Sheet</h2>
             <p style={{ color: '#64748b', marginBottom: '40px', fontSize: '1.05rem' }}>Make sure the 4 corner black squares are visible in the photo.</p>
 
@@ -869,7 +897,7 @@ const OMRScanner = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
             {/* Header with Scan Another Sheet Button */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '4px' }}>
+            <div className="omr-results-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '4px' }}>
               <h2 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#1e293b', margin: 0 }}>Evaluation Report</h2>
               <button 
                 onClick={() => {
@@ -989,11 +1017,11 @@ const OMRScanner = () => {
             })()}
 
             {/* Detailed Table */}
-            <div style={{ background: 'white', borderRadius: '24px', padding: '24px', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)' }}>
+            <div className="omr-card-mobile-padding" style={{ background: 'white', borderRadius: '24px', padding: '24px', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)' }}>
               <div style={{ borderBottom: '2px solid #f1f5f9', paddingBottom: '16px', marginBottom: '16px' }}>
                 <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#1e293b', margin: 0 }}>Detailed Breakdown</h3>
               </div>
-              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              <div className="omr-table-wrapper" style={{ maxHeight: '400px', overflowY: 'auto' }}>
                 <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
                   <thead style={{ position: 'sticky', top: 0, background: 'white', zIndex: 10 }}>
                     <tr>
