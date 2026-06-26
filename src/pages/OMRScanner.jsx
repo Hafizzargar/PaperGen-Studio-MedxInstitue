@@ -76,25 +76,7 @@ const OMRScanner = () => {
     }
   };
 
-  const capturePhotoAndScan = () => {
-    if (videoRef.current) {
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth || 1280;
-      canvas.height = videoRef.current.videoHeight || 720;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-      
-      setImage(dataUrl);
-      pdfCanvasDataRef.current = null;
-      stopCamera();
-      
-      // Auto run scan!
-      setTimeout(() => {
-        runScan(dataUrl);
-      }, 100);
-    }
-  };
+
 
   useEffect(() => {
     if (isCameraActive && videoRef.current && streamRef.current) {
@@ -173,7 +155,7 @@ const OMRScanner = () => {
             
             // Auto run scan!
             setTimeout(() => {
-              runScan(dataUrl);
+              runScan(dataUrl, true);
             }, 100);
           }
         } catch (e) {
@@ -449,7 +431,7 @@ const OMRScanner = () => {
     });
   };
 
-  const runScan = async (overrideImage) => {
+  const runScan = async (overrideImage, isFromCamera = false) => {
     const activeImg = overrideImage || image;
     if (!activeImg) {
       setError('Please upload an OMR sheet image.');
@@ -489,8 +471,15 @@ const OMRScanner = () => {
       if (abortScanRef.current) return;
       
       if (result.isSimulated) {
-        setError("Could not detect OMR alignment markers. Please ensure the 4 corner black squares are visible, well-lit, and aligned inside the camera guide lines.");
-        setIsScanning(false);
+        if (isFromCamera) {
+          setError("The captured image was blurry or markers were not clear. Please hold the camera steady and align the OMR sheet again.");
+          setIsScanning(false);
+          setImage(null);
+          startCamera();
+        } else {
+          setError("Could not detect OMR alignment markers. The image might be blurry or missing corner black squares. Please try again.");
+          setIsScanning(false);
+        }
         return;
       }
 
@@ -1346,18 +1335,12 @@ const OMRScanner = () => {
                       </div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '16px', marginTop: '16px', justifyContent: 'center', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '16px', justifyContent: 'center' }}>
                     <button 
                       onClick={stopCamera} 
-                      style={{ background: 'white', color: '#ef4444', border: '1px solid #fee2e2', padding: '10px 24px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      style={{ background: 'white', color: '#ef4444', border: '1px solid #fee2e2', padding: '10px 24px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '0.9rem' }}
                     >
-                      Cancel
-                    </button>
-                    <button 
-                      onClick={capturePhotoAndScan} 
-                      style={{ background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white', border: 'none', padding: '10px 28px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(16,185,129,0.2)' }}
-                    >
-                      <Camera size={18} /> Capture & Scan
+                      Cancel Camera
                     </button>
                   </div>
                 </div>
