@@ -76,6 +76,26 @@ const OMRScanner = () => {
     }
   };
 
+  const capturePhotoAndScan = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth || 1280;
+      canvas.height = videoRef.current.videoHeight || 720;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      
+      setImage(dataUrl);
+      pdfCanvasDataRef.current = null;
+      stopCamera();
+      
+      // Auto run scan!
+      setTimeout(() => {
+        runScan(dataUrl);
+      }, 100);
+    }
+  };
+
   useEffect(() => {
     if (isCameraActive && videoRef.current && streamRef.current) {
       videoRef.current.srcObject = streamRef.current;
@@ -111,10 +131,15 @@ const OMRScanner = () => {
           const cv = await cvModule.loadOpenCV();
           if (!cv || !cv.Mat || !videoRef.current) return;
           
+          // Get the dynamic aspect ratio of the stream to prevent shape stretching/distortion
+          const videoW = videoRef.current.videoWidth || 640;
+          const videoH = videoRef.current.videoHeight || 480;
+          const aspect = videoW / videoH;
+          
           // Create offscreen canvas to capture frame
           const canvas = document.createElement('canvas');
           canvas.width = 320; // small size for high speed analysis (~10ms)
-          canvas.height = 240;
+          canvas.height = Math.round(320 / aspect);
           const ctx = canvas.getContext('2d');
           ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
           
@@ -1259,12 +1284,18 @@ const OMRScanner = () => {
                       </div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '12px', marginTop: '16px', justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', gap: '16px', marginTop: '16px', justifyContent: 'center', alignItems: 'center' }}>
                     <button 
                       onClick={stopCamera} 
-                      style={{ background: 'white', color: '#ef4444', border: '1px solid #fee2e2', padding: '10px 24px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '0.9rem' }}
+                      style={{ background: 'white', color: '#ef4444', border: '1px solid #fee2e2', padding: '10px 24px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
-                      Cancel Camera
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={capturePhotoAndScan} 
+                      style={{ background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white', border: 'none', padding: '10px 28px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(16,185,129,0.2)' }}
+                    >
+                      <Camera size={18} /> Capture & Scan
                     </button>
                   </div>
                 </div>
