@@ -624,7 +624,57 @@ const OMRScanner = () => {
                 </div>
               </div>
 
-              <h3 style={{ fontSize: '1.05rem', fontWeight: '700', marginBottom: '20px', paddingBottom: '10px', borderBottom: '2px solid #f1f5f9' }}>Master Answer Key</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '10px', borderBottom: '2px solid #f1f5f9' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '700', margin: 0 }}>Master Answer Key</h3>
+                
+                {/* Recent Answer Keys Quick-load Dropdown */}
+                {scanHistory.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#64748b' }}>Quick Load:</span>
+                    <select 
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        if (selectedId) {
+                          const entry = scanHistory.find(h => h.id === selectedId);
+                          if (entry && entry.answerKey) {
+                            setAnswerKey(entry.answerKey);
+                            setNumQuestions(entry.numQuestions);
+                            setPositiveMarks(entry.positiveMarks);
+                            setNegativeMarks(entry.negativeMarks);
+                            setSubjectCode(entry.subjectCode === '—' ? '' : entry.subjectCode);
+                            
+                            localStorage.setItem('omr_master_answer_key', JSON.stringify(entry.answerKey));
+                            localStorage.setItem('omr_num_questions', entry.numQuestions.toString());
+                            localStorage.setItem('omr_positive_marks', entry.positiveMarks.toString());
+                            localStorage.setItem('omr_negative_marks', entry.negativeMarks.toString());
+                            if (entry.subjectCode !== '—') {
+                              localStorage.setItem('omr_subject_code', entry.subjectCode);
+                            }
+                          }
+                        }
+                      }}
+                      style={{ 
+                        padding: '6px 12px', 
+                        borderRadius: '8px', 
+                        border: '1px solid #cbd5e1', 
+                        fontSize: '0.8rem', 
+                        fontWeight: '600', 
+                        cursor: 'pointer', 
+                        background: 'white',
+                        outline: 'none',
+                        color: '#475569'
+                      }}
+                    >
+                      <option value="">Recent Keys...</option>
+                      {scanHistory.map(h => (
+                        <option key={h.id} value={h.id}>
+                          {h.studentName} - {h.subjectCode} ({h.date.split(',')[0]})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
               
               <div style={{ maxHeight: '400px', overflowY: 'auto', paddingRight: '10px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '12px' }}>
