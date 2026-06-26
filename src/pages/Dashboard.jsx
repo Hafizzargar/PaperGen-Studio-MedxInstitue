@@ -132,7 +132,33 @@ export default function Dashboard() {
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', backgroundColor: '#f8fafc', fontFamily: 'system-ui, sans-serif', padding: '40px 20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', minHeight: '100vh', backgroundColor: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
+      {/* Contact Marquee Banner */}
+      <div style={{
+        width: '100%',
+        backgroundColor: '#1e1b4b',
+        color: '#f59e0b',
+        borderBottom: '1px solid rgba(245, 158, 11, 0.2)',
+        padding: '10px 0',
+        zIndex: 1000,
+        fontSize: '0.9rem',
+        fontWeight: '600',
+        flexShrink: 0
+      }}>
+        <marquee 
+          scrollamount="5"
+          onMouseOver={(e) => e.currentTarget.stop()}
+          onMouseOut={(e) => e.currentTarget.start()}
+        >
+          <span>System Notice: Our technical support team is actively working on resolving platform issues. If you experience any technical difficulties, please </span>
+          <a href="mailto:hafezzargar987@gmail.com" style={{ color: '#60a5fa', textDecoration: 'underline', margin: '0 4px', fontWeight: '700' }}>contact support</a>
+          <span> or visit the official </span>
+          <a href="https://medxinstitute-doda.netlify.app/" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline', margin: '0 4px', fontWeight: '700' }}>Medix Institute Doda Portal</a>
+          <span> for assistance.</span>
+        </marquee>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '40px 20px' }}>
       
       {/* Header Banner */}
       <div style={{ 
@@ -376,6 +402,7 @@ export default function Dashboard() {
           onCancel={() => setCustomAlert(null)}
         />
       )}
+      </div>
     </div>
   );
 }

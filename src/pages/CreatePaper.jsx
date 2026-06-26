@@ -303,7 +303,33 @@ export default function CreatePaper() {
   const masterCodeLabel = activeCodesArray.length > 0 ? 'Master Draft' : 'None';
 
   return (
-    <div className="app-container">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>
+      {/* Contact Marquee Banner */}
+      <div style={{
+        width: '100%',
+        backgroundColor: '#1e1b4b',
+        color: '#f59e0b',
+        borderBottom: '1px solid rgba(245, 158, 11, 0.2)',
+        padding: '10px 0',
+        zIndex: 1000,
+        fontSize: '0.9rem',
+        fontWeight: '600',
+        flexShrink: 0
+      }}>
+        <marquee 
+          scrollamount="5"
+          onMouseOver={(e) => e.currentTarget.stop()}
+          onMouseOut={(e) => e.currentTarget.start()}
+        >
+          <span>System Notice: Our technical support team is actively working on resolving platform issues. If you experience any technical difficulties, please </span>
+          <a href="mailto:hafezzargar987@gmail.com" style={{ color: '#60a5fa', textDecoration: 'underline', margin: '0 4px', fontWeight: '700' }}>contact support</a>
+          <span> or visit the official </span>
+          <a href="https://medxinstitute-doda.netlify.app/" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline', margin: '0 4px', fontWeight: '700' }}>Medix Institute Doda Portal</a>
+          <span> for assistance.</span>
+        </marquee>
+      </div>
+
+      <div className="app-container" style={{ flex: 1, minHeight: 0 }}>
       <ControlPanel 
         onBack={() => navigate('/')}
         onAddQuestion={addQuestion}
@@ -404,6 +430,7 @@ export default function CreatePaper() {
           }}
         />
       )}
+      </div>
     </div>
   );
 }

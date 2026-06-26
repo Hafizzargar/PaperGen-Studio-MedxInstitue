@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Download, PlusCircle, Image as ImageIcon, BookOpen, Trash2, Camera, FileDown } from 'lucide-react';
 import CustomAlert from './CustomAlert';
+import ImageCropper from './ImageCropper';
 
 export default function ControlPanel({ onAddQuestion, paperCodes, onTogglePaperCode, onDownloadPDF, onClearPaper, onExportJSON, counts, onBack, paperMode, onImportJSON, isGeneratingZip, editingQuestion, onUpdateQuestion, onCancelEdit }) {
   const [section, setSection] = useState(paperMode === 'full' ? 'physics' : paperMode);
@@ -9,6 +10,8 @@ export default function ControlPanel({ onAddQuestion, paperCodes, onTogglePaperC
   const [imagePreview, setImagePreview] = useState(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [customAlert, setCustomAlert] = useState(null);
+  const [tempImage, setTempImage] = useState(null);
+  const [showCropper, setShowCropper] = useState(false);
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -48,7 +51,8 @@ export default function ControlPanel({ onAddQuestion, paperCodes, onTogglePaperC
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImagePreview(reader.result);
+        setTempImage(reader.result);
+        setShowCropper(true);
         if (isCameraActive) stopCamera();
       };
       reader.readAsDataURL(file);
@@ -82,7 +86,8 @@ export default function ControlPanel({ onAddQuestion, paperCodes, onTogglePaperC
       const ctx = canvas.getContext('2d');
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
       const dataUrl = canvas.toDataURL('image/png');
-      setImagePreview(dataUrl);
+      setTempImage(dataUrl);
+      setShowCropper(true);
       stopCamera();
     }
   };
@@ -131,49 +136,117 @@ export default function ControlPanel({ onAddQuestion, paperCodes, onTogglePaperC
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
         padding: '16px 24px',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+        borderBottom: editingQuestion ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(255, 255, 255, 0.05)',
         display: 'flex',
         alignItems: 'center',
-        flexShrink: 0
+        justifyContent: 'space-between',
+        flexShrink: 0,
+        transition: 'all 0.3s ease'
       }}>
-        <button 
-          onClick={onBack} 
-          style={{ 
-            background: 'rgba(255, 255, 255, 0.05)', 
-            border: '1px solid rgba(255, 255, 255, 0.1)', 
-            color: '#e2e8f0', 
-            padding: '8px 16px', 
-            borderRadius: '8px',
-            fontSize: '13px', 
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontWeight: '600',
-            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-            e.currentTarget.style.transform = 'translateX(-2px)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-            e.currentTarget.style.transform = 'translateX(0)';
-          }}
-        >
-          <span style={{ fontSize: '16px', lineHeight: '1' }}>←</span> Back to Dashboard
-        </button>
+        {editingQuestion ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ 
+                width: '8px', 
+                height: '8px', 
+                borderRadius: '50%', 
+                backgroundColor: '#f59e0b',
+                boxShadow: '0 0 8px #f59e0b',
+                display: 'inline-block'
+              }} />
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#f59e0b', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                Editing Mode
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button 
+                type="button"
+                onClick={handleSubmit}
+                style={{ 
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', 
+                  color: 'white', 
+                  border: 'none',
+                  padding: '8px 16px', 
+                  borderRadius: '8px',
+                  fontSize: '12px', 
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  boxShadow: '0 4px 10px rgba(16, 185, 129, 0.2)',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.boxShadow = '0 6px 14px rgba(16, 185, 129, 0.35)';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.boxShadow = '0 4px 10px rgba(16, 185, 129, 0.2)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                Save
+              </button>
+              <button 
+                type="button" 
+                onClick={onCancelEdit} 
+                style={{ 
+                  background: 'rgba(255, 255, 255, 0.08)', 
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  color: '#cbd5e1', 
+                  padding: '8px 16px', 
+                  borderRadius: '8px',
+                  fontSize: '12px', 
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                  e.currentTarget.style.color = '#ffffff';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                  e.currentTarget.style.color = '#cbd5e1';
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <button 
+            onClick={onBack} 
+            style={{ 
+              background: 'rgba(255, 255, 255, 0.05)', 
+              border: '1px solid rgba(255, 255, 255, 0.1)', 
+              color: '#e2e8f0', 
+              padding: '8px 16px', 
+              borderRadius: '8px',
+              fontSize: '13px', 
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontWeight: '600',
+              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+              e.currentTarget.style.transform = 'translateX(-2px)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+              e.currentTarget.style.transform = 'translateX(0)';
+            }}
+          >
+            <span style={{ fontSize: '16px', lineHeight: '1' }}>←</span> Back to Dashboard
+          </button>
+        )}
       </div>
 
-      <div className="sidebar-header">
-        <div style={{ position: 'relative', zIndex: 10 }}>
-          <h1 style={{ margin: 0 }}>PaperGen</h1>
-          <p style={{ margin: 0 }}>Medix Institute Doda</p>
-        </div>
-      </div>
+
 
       <div className="control-section" style={
         editingQuestion 
@@ -376,21 +449,7 @@ export default function ControlPanel({ onAddQuestion, paperCodes, onTogglePaperC
             </div>
           </div>
 
-          {editingQuestion ? (
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
-                Update Question
-              </button>
-              <button 
-                type="button" 
-                className="btn" 
-                style={{ flex: 1, backgroundColor: '#475569', color: 'white' }}
-                onClick={onCancelEdit}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
+          {editingQuestion ? null : (
             <button type="submit" className="btn btn-primary">
               <PlusCircle size={18} /> Add to Paper
             </button>
@@ -470,6 +529,23 @@ export default function ControlPanel({ onAddQuestion, paperCodes, onTogglePaperC
             setCustomAlert(null);
           }}
           onCancel={() => setCustomAlert(null)}
+        />
+      )}
+      {showCropper && tempImage && (
+        <ImageCropper
+          src={tempImage}
+          onCrop={(croppedDataUrl) => {
+            setImagePreview(croppedDataUrl);
+            setShowCropper(false);
+            setTempImage(null);
+          }}
+          onCancel={() => {
+            setShowCropper(false);
+            setTempImage(null);
+            if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+            }
+          }}
         />
       )}
     </aside>
