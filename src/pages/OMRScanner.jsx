@@ -574,12 +574,24 @@ const OMRScanner = () => {
           }
           .omr-score-dist-row {
             flex-direction: column !important;
+            gap: 16px !important;
+          }
+          .omr-score-dist-row > div:last-child {
+            flex: none !important;
+            width: 100% !important;
           }
           .omr-scanner-layout {
             flex-direction: column !important;
             gap: 16px !important;
             padding: 0 12px !important;
             margin: 15px auto !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+          }
+          .omr-scanner-layout > div:last-child {
+            width: 100% !important;
+            min-width: 0 !important;
+            overflow: hidden !important;
           }
           .omr-scanner-sidebar {
             width: 100% !important;
@@ -619,6 +631,8 @@ const OMRScanner = () => {
           }
           .omr-score-grid {
             grid-template-columns: repeat(2, 1fr) !important;
+            flex: none !important;
+            width: 100% !important;
           }
           .omr-score-grid > div:first-child {
             grid-column: span 2 !important;
@@ -648,6 +662,7 @@ const OMRScanner = () => {
             border-radius: 16px !important;
           }
           .omr-table-wrapper {
+            width: 100% !important;
             overflow-x: auto !important;
             -webkit-overflow-scrolling: touch !important;
           }
@@ -1544,7 +1559,7 @@ const OMRScanner = () => {
               <div style={{ borderBottom: '2px solid #f1f5f9', paddingBottom: '16px', marginBottom: '16px' }}>
                 <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#1e293b', margin: 0 }}>Detailed Breakdown</h3>
               </div>
-              <div className="omr-table-wrapper" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              <div className="omr-table-wrapper" style={{ width: '100%', overflowX: 'auto', maxHeight: '400px', overflowY: 'auto' }}>
                 <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
                   <thead style={{ position: 'sticky', top: 0, background: 'white', zIndex: 10 }}>
                     <tr>
