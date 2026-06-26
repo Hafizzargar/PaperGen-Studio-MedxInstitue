@@ -1,6 +1,6 @@
 import cvLib from '@techstark/opencv-js';
 
-const loadOpenCV = async (addLog) => {
+export const loadOpenCV = async (addLog) => {
   return new Promise((resolve, reject) => {
     // If it's already fully loaded
     if (cvLib && cvLib.Mat) {
@@ -316,4 +316,54 @@ export const processOMR = async (imageDataUrl, numQuestions, answerKey, positive
     img.onerror = () => reject(new Error("Failed to load image for scanning."));
     img.src = imageDataUrl;
   });
+};
+
+export const detectCornersDirect = (cv, canvas) => {
+  let src;
+  try {
+    src = cv.imread(canvas);
+  } catch (e) {
+    return 0;
+  }
+  let gray = new cv.Mat();
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+  let blurred = new cv.Mat();
+  cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
+  let thresh = new cv.Mat();
+  cv.adaptiveThreshold(blurred, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 51, 15);
+  let contours = new cv.MatVector();
+  let hierarchy = new cv.Mat();
+  cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+  
+  let cornerMarkers = [];
+  let maxArea = src.cols * src.rows;
+  for (let i = 0; i < contours.size(); ++i) {
+    let cnt = contours.get(i);
+    let area = cv.contourArea(cnt);
+    if (area > 30 && area < maxArea * 0.05) {
+      let rect = cv.boundingRect(cnt);
+      let aspectRatio = rect.width / rect.height;
+      let extent = area / (rect.width * rect.height);
+      if (aspectRatio >= 0.8 && aspectRatio <= 1.2 && extent >= 0.85) {
+        let peri = cv.arcLength(cnt, true);
+        let approx = new cv.Mat();
+        cv.approxPolyDP(cnt, approx, 0.04 * peri, true);
+        if (approx.rows >= 4 && approx.rows <= 5) {
+          cornerMarkers.push({ area });
+        }
+        approx.delete();
+      }
+    }
+  }
+  
+  // Cleanup
+  src.delete(); gray.delete(); blurred.delete(); thresh.delete();
+  contours.delete(); hierarchy.delete();
+  
+  if (cornerMarkers.length > 4) {
+    cornerMarkers.sort((a, b) => b.area - a.area);
+    cornerMarkers = cornerMarkers.slice(0, 4);
+  }
+  
+  return cornerMarkers.length;
 };

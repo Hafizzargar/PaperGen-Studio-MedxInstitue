@@ -31,6 +31,142 @@ const OMRScanner = () => {
   const [answerKey, setAnswerKey] = useState({});
   const fileInputRef = useRef(null);
 
+  // Camera State & Refs
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+
+  const startCamera = async () => {
+    setError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        } 
+      });
+      streamRef.current = stream;
+      setIsCameraActive(true);
+    } catch (err) {
+      console.error("Error accessing camera: ", err);
+      setError('Could not access the camera. Please ensure your browser has camera permissions enabled.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      setImage(dataUrl);
+      pdfCanvasDataRef.current = null;
+      stopCamera();
+    }
+  };
+
+  useEffect(() => {
+    if (isCameraActive && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [isCameraActive]);
+
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeStep !== 2) {
+      stopCamera();
+    }
+  }, [activeStep]);
+  
+  // Live Frame Auto-Scanner
+  useEffect(() => {
+    let intervalId;
+    let isProcessingFrame = false;
+    
+    if (isCameraActive && videoRef.current) {
+      const checkFrame = async () => {
+        if (isProcessingFrame || !videoRef.current || videoRef.current.paused || videoRef.current.ended) return;
+        
+        try {
+          isProcessingFrame = true;
+          const cvModule = await import('../utils/omrScanner');
+          const cv = await cvModule.loadOpenCV();
+          if (!cv || !cv.Mat || !videoRef.current) return;
+          
+          // Create offscreen canvas to capture frame
+          const canvas = document.createElement('canvas');
+          canvas.width = 320; // small size for high speed analysis (~10ms)
+          canvas.height = 240;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+          
+          // Detect markers
+          const numMarkers = cvModule.detectCornersDirect(cv, canvas);
+          if (numMarkers === 4 && videoRef.current) {
+            // Found all 4 corners! Capture immediately!
+            console.log("AUTO-DETECTED 4 CORNERS! Capturing frame...");
+            
+            // Draw high-res canvas for the actual capture
+            const highResCanvas = document.createElement('canvas');
+            highResCanvas.width = videoRef.current.videoWidth || 1280;
+            highResCanvas.height = videoRef.current.videoHeight || 720;
+            const hrCtx = highResCanvas.getContext('2d');
+            hrCtx.drawImage(videoRef.current, 0, 0, highResCanvas.width, highResCanvas.height);
+            const dataUrl = highResCanvas.toDataURL('image/jpeg', 0.95);
+            
+            // Visual feedback flash
+            const videoParent = videoRef.current.parentElement;
+            if (videoParent) {
+              videoParent.style.outline = '4px solid #10b981';
+              setTimeout(() => {
+                if (videoParent) videoParent.style.outline = 'none';
+              }, 300);
+            }
+            
+            // Process the capture
+            setImage(dataUrl);
+            pdfCanvasDataRef.current = null;
+            stopCamera();
+            
+            // Auto run scan!
+            setTimeout(() => {
+              runScan(dataUrl);
+            }, 100);
+          }
+        } catch (e) {
+          console.error("Frame analysis error:", e);
+        } finally {
+          isProcessingFrame = false;
+        }
+      };
+      
+      // Analyze a frame every 400ms
+      intervalId = setInterval(checkFrame, 400);
+    }
+    
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isCameraActive]);
+
   // Student Info State
   const [studentName, setStudentName] = useState('');
   const [rollNo, setRollNo] = useState('');
@@ -155,7 +291,21 @@ const OMRScanner = () => {
             await page.render({ canvasContext: ctx, viewport: viewport }).promise;
             
             if (abortScanRef.current) return;
-            setScanProgress(90);
+            setScanProgress(85);
+            setScanStatusText('Validating OMR sheet markers...');
+            
+            const cvModule = await import('../utils/omrScanner');
+            const cv = await cvModule.loadOpenCV();
+            if (abortScanRef.current) return;
+            
+            const numMarkers = cvModule.detectCornersDirect(cv, canvas);
+            if (numMarkers < 4) {
+              setError("Invalid PDF: This document is not a valid MedX OMR Sheet (missing corner black markers).");
+              setImage(null);
+              pdfCanvasDataRef.current = null;
+              setIsScanning(false);
+              return;
+            }
             
             // Store raw pixel data for direct reading (100% accurate)
             pdfCanvasDataRef.current = {
@@ -181,11 +331,60 @@ const OMRScanner = () => {
         reader.readAsArrayBuffer(file);
       } else {
         // Handle normal images
+        abortScanRef.current = false;
+        setIsScanning(true);
+        setScanStatusText('Parsing image file...');
+        setScanProgress(20);
         const reader = new FileReader();
         reader.onload = (evt) => {
-          setImage(evt.target.result);
-          setError('');
-          setScanResult(null);
+          if (abortScanRef.current) return;
+          const imgUrl = evt.target.result;
+          
+          setScanProgress(40);
+          setScanStatusText('Loading image into memory...');
+          const img = new Image();
+          img.onload = async () => {
+            try {
+              if (abortScanRef.current) return;
+              setScanProgress(60);
+              setScanStatusText('Validating OMR sheet markers...');
+              
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0);
+              
+              const cvModule = await import('../utils/omrScanner');
+              const cv = await cvModule.loadOpenCV();
+              if (abortScanRef.current) return;
+              
+              const numMarkers = cvModule.detectCornersDirect(cv, canvas);
+              if (numMarkers < 4) {
+                setError("Invalid Image: This image is not a valid MedX OMR Sheet (missing corner black markers).");
+                setImage(null);
+                setIsScanning(false);
+                return;
+              }
+              
+              setScanProgress(100);
+              setImage(imgUrl);
+              setError('');
+              setScanResult(null);
+            } catch (err) {
+              console.error("Image validation failed:", err);
+              setError("An error occurred while validating the image.");
+            } finally {
+              if (!abortScanRef.current) {
+                setIsScanning(false);
+              }
+            }
+          };
+          img.onerror = () => {
+            setError("Failed to load image file.");
+            setIsScanning(false);
+          };
+          img.src = imgUrl;
         };
         reader.readAsDataURL(file);
       }
@@ -225,8 +424,9 @@ const OMRScanner = () => {
     });
   };
 
-  const runScan = async () => {
-    if (!image) {
+  const runScan = async (overrideImage) => {
+    const activeImg = overrideImage || image;
+    if (!activeImg) {
       setError('Please upload an OMR sheet image.');
       return;
     }
@@ -263,10 +463,13 @@ const OMRScanner = () => {
       
       if (abortScanRef.current) return;
       
-      setScanResult(result);
       if (result.isSimulated) {
-        setError("Warning: Could not detect corner markers. Showing simulated result.");
+        setError("Could not detect OMR alignment markers. Please ensure the 4 corner black squares are visible, well-lit, and aligned inside the camera guide lines.");
+        setIsScanning(false);
+        return;
       }
+
+      setScanResult(result);
 
       // Save to scan history
       const newHistoryEntry = {
@@ -338,9 +541,15 @@ const OMRScanner = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', color: '#1e293b', fontFamily: 'system-ui, sans-serif', overflowX: 'hidden' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', color: '#1e293b', fontFamily: 'system-ui, sans-serif' }}>
       <style>{`
         @media (max-width: 768px) {
+          .omr-sidebar-templates {
+            display: none !important;
+          }
+          .omr-score-dist-row {
+            flex-direction: column !important;
+          }
           .omr-scanner-layout {
             flex-direction: column !important;
             gap: 16px !important;
@@ -421,13 +630,28 @@ const OMRScanner = () => {
             min-width: 550px !important;
           }
         }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        @keyframes scanLine {
+          0% { top: 0%; opacity: 0; }
+          5% { opacity: 1; }
+          95% { opacity: 1; }
+          100% { top: 100%; opacity: 0; }
+        }
+        @keyframes shake {
+          0%, 100% { transform: translate(-50%, 0); }
+          10%, 30%, 50%, 70%, 90% { transform: translate(calc(-50% - 6px), 0); }
+          20%, 40%, 60%, 80% { transform: translate(calc(-50% + 6px), 0); }
+        }
       `}</style>
       
       {/* Header */}
       <div className="omr-scanner-header" style={{
         backgroundColor: '#1e1b4b',
         color: 'white',
-        padding: '20px 40px',
+        padding: '12px 24px',
         display: 'flex',
         alignItems: 'center',
         gap: '20px',
@@ -452,7 +676,7 @@ const OMRScanner = () => {
         </div>
       </div>
 
-      <div className="omr-scanner-layout" style={{ maxWidth: '1200px', margin: '30px auto', padding: '0 20px', display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+      <div className="omr-scanner-layout" style={{ maxWidth: '1440px', margin: '15px auto', padding: '0 20px', display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
         
         {/* Vertical Step Indicator - Left Sidebar */}
         <div className="omr-scanner-sidebar" style={{ 
@@ -463,7 +687,7 @@ const OMRScanner = () => {
           padding: '20px 16px', 
           boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
           position: 'sticky',
-          top: '100px',
+          top: '80px',
           display: 'flex',
           flexDirection: 'column',
           gap: '4px'
@@ -514,6 +738,29 @@ const OMRScanner = () => {
             </div>
           ))}
 
+          {/* Download OMR Template Buttons */}
+          <div className="omr-sidebar-templates" style={{ margin: '12px 0 0 0', borderTop: '1px solid #f1f5f9', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              OMR Templates
+            </span>
+            <button 
+              onClick={handleDownloadOMR}
+              style={{
+                width: '100%', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', padding: '6px 10px', borderRadius: '6px', fontWeight: '700', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', transition: 'all 0.2s'
+              }}
+            >
+              <Download size={12} /> Blank A4 Sheet
+            </button>
+            <button 
+              onClick={handleDownloadDummy}
+              style={{
+                width: '100%', background: '#f5f3ff', color: '#8b5cf6', border: '1px solid #ddd6fe', padding: '6px 10px', borderRadius: '6px', fontWeight: '700', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', transition: 'all 0.2s'
+              }}
+            >
+              <FlaskConical size={12} /> Dummy Test Sheet
+            </button>
+          </div>
+
           {/* Evaluation History Section */}
           {scanHistory.length > 0 && (
             <div className="omr-history-section" style={{ width: '100%' }}>
@@ -522,7 +769,7 @@ const OMRScanner = () => {
                   History (7 Days)
                 </span>
               </div>
-              <div className="omr-history-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '320px', overflowY: 'auto', paddingRight: '4px' }}>
+              <div className="omr-history-list" style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto', paddingRight: '4px' }}>
                 {scanHistory.map(entry => (
                   <div 
                     key={entry.id}
@@ -587,214 +834,184 @@ const OMRScanner = () => {
 
         {/* Step 1: Setup */}
         {activeStep === 1 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             
-            {/* OMR Download Card */}
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(139,92,246,0.1) 100%)',
-              border: '1px solid rgba(59,130,246,0.2)',
-              borderRadius: '20px',
-              padding: '24px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '20px'
-            }}>
-              <div style={{ flex: '1 1 300px' }}>
-                <h2 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 8px 0' }}>
-                  <FileImage size={20} /> Official MedX OMR Sheet
-                </h2>
-                <p style={{ margin: 0, color: '#475569', fontSize: '0.95rem', lineHeight: '1.5' }}>
-                  Our scanner uses advanced computer vision. It <strong>requires</strong> the use of the official MedX OMR sheet which contains specific alignment markers. Generate and print the sheet for your students before the test.
-                </p>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <button 
-                  onClick={handleDownloadOMR}
-                  style={{
-                    background: '#3b82f6', color: 'white', border: 'none', padding: '14px 24px', borderRadius: '12px', fontWeight: '600', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 14px rgba(59,130,246,0.3)', transition: 'all 0.2s'
-                  }}
-                  onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
-                  onMouseOut={e => e.currentTarget.style.transform = 'none'}
-                >
-                  <Download size={20} /> Blank OMR Sheet
-                </button>
-                <button 
-                  onClick={handleDownloadDummy}
-                  style={{
-                    background: '#8b5cf6', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '12px', fontWeight: '600', fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 14px rgba(139,92,246,0.3)', transition: 'all 0.2s'
-                  }}
-                  onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
-                  onMouseOut={e => e.currentTarget.style.transform = 'none'}
-                >
-                  <FlaskConical size={18} /> Dummy Test Sheet
-                </button>
-              </div>
-            </div>
-
             {/* Rules Card */}
-            <div className="omr-card-mobile-padding" style={{ background: 'white', borderRadius: '20px', padding: '30px', boxShadow: '0 10px 30px -10px rgba(0,0,0,0.05)' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Settings size={22} color="#3b82f6" /> Evaluation Rules
-              </h2>
-
-              {/* Student Info Fields */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '24px', padding: '20px', background: 'linear-gradient(135deg, rgba(59,130,246,0.05) 0%, rgba(139,92,246,0.05) 100%)', borderRadius: '16px', border: '1px solid rgba(59,130,246,0.1)' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase' }}>Student Name</label>
-                  <input 
-                    type="text" 
-                    placeholder="Enter student name"
-                    value={studentName}
-                    onChange={(e) => setStudentName(e.target.value)}
-                    style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '1rem', fontWeight: '600', background: 'white' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase' }}>Roll No</label>
-                  <input 
-                    type="text" 
-                    placeholder="Enter roll number"
-                    value={rollNo}
-                    onChange={(e) => setRollNo(e.target.value)}
-                    style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '1rem', fontWeight: '600', background: 'white' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase' }}>Subject Code</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. PHY, CHEM, BIO"
-                    value={subjectCode}
-                    onChange={(e) => setSubjectCode(e.target.value)}
-                    style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '1rem', fontWeight: '600', background: 'white' }}
-                  />
-                </div>
-              </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '30px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase' }}>Total Questions</label>
-                  <input 
-                    type="number" min="1" max="180" 
-                    value={numQuestions}
-                    onChange={handleNumQuestionsChange}
-                    style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '1rem', fontWeight: '600', background: '#f8fafc' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase' }}>Marks for Correct (+)</label>
-                  <input 
-                    type="number" 
-                    value={positiveMarks}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value) || 0;
-                      setPositiveMarks(val);
-                      localStorage.setItem('omr_positive_marks', val.toString());
-                    }}
-                    style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '1rem', fontWeight: '600', color: '#10b981', background: '#f8fafc' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '700', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase' }}>Marks for Incorrect (-)</label>
-                  <input 
-                    type="number" 
-                    value={negativeMarks}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value) || 0;
-                      setNegativeMarks(val);
-                      localStorage.setItem('omr_negative_marks', val.toString());
-                    }}
-                    style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '1rem', fontWeight: '600', color: '#ef4444', background: '#f8fafc' }}
-                  />
-                </div>
+            <div className="omr-card-mobile-padding" style={{ background: 'white', borderRadius: '20px', padding: '20px 24px', boxShadow: '0 10px 30px -10px rgba(0,0,0,0.05)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '2px solid #f1f5f9', paddingBottom: '10px' }}>
+                <h2 style={{ fontSize: '1.2rem', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Settings size={20} color="#3b82f6" /> Evaluation Rules
+                </h2>
+                <span className="omr-sidebar-templates" style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>
+                  Download sheet templates from the left sidebar
+                </span>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '10px', borderBottom: '2px solid #f1f5f9' }}>
-                <h3 style={{ fontSize: '1.05rem', fontWeight: '700', margin: 0 }}>Master Answer Key</h3>
-                
-                {/* Recent Answer Keys Quick-load Dropdown */}
-                {scanHistory.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#64748b' }}>Quick Load:</span>
-                    <select 
-                      onChange={(e) => {
-                        const selectedId = e.target.value;
-                        if (selectedId) {
-                          const entry = scanHistory.find(h => h.id === selectedId);
-                          if (entry && entry.answerKey) {
-                            setAnswerKey(entry.answerKey);
-                            setNumQuestions(entry.numQuestions);
-                            setPositiveMarks(entry.positiveMarks);
-                            setNegativeMarks(entry.negativeMarks);
-                            setSubjectCode(entry.subjectCode === '—' ? '' : entry.subjectCode);
-                            
-                            localStorage.setItem('omr_master_answer_key', JSON.stringify(entry.answerKey));
-                            localStorage.setItem('omr_num_questions', entry.numQuestions.toString());
-                            localStorage.setItem('omr_positive_marks', entry.positiveMarks.toString());
-                            localStorage.setItem('omr_negative_marks', entry.negativeMarks.toString());
-                            if (entry.subjectCode !== '—') {
-                              localStorage.setItem('omr_subject_code', entry.subjectCode);
+              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                {/* Left Column: Form Settings */}
+                <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  
+                  {/* Student Info */}
+                  <div style={{ padding: '16px', background: 'linear-gradient(135deg, rgba(59,130,246,0.04) 0%, rgba(139,92,246,0.04) 100%)', borderRadius: '12px', border: '1px solid rgba(59,130,246,0.08)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Student Details</span>
+                    
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>NAME</label>
+                        <input 
+                          type="text" 
+                          placeholder="Name"
+                          value={studentName}
+                          onChange={(e) => setStudentName(e.target.value)}
+                          style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.9rem', fontWeight: '600', color: '#1e293b' }}
+                        />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>ROLL NO</label>
+                        <input 
+                          type="text" 
+                          placeholder="Roll No"
+                          value={rollNo}
+                          onChange={(e) => setRollNo(e.target.value)}
+                          style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.9rem', fontWeight: '600', color: '#1e293b' }}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>SUBJECT CODE</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. PHY, CHEM, BIO"
+                        value={subjectCode}
+                        onChange={(e) => setSubjectCode(e.target.value)}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.9rem', fontWeight: '600', color: '#1e293b' }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Grading config */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>QUESTIONS</label>
+                      <input 
+                        type="number" min="1" max="180" 
+                        value={numQuestions}
+                        onChange={handleNumQuestionsChange}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.9rem', fontWeight: '600', background: '#f8fafc', color: '#1e293b' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>CORRECT (+)</label>
+                      <input 
+                        type="number" 
+                        value={positiveMarks}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          setPositiveMarks(val);
+                          localStorage.setItem('omr_positive_marks', val.toString());
+                        }}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.9rem', fontWeight: '600', color: '#10b981', background: '#f8fafc' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>INCORRECT (-)</label>
+                      <input 
+                        type="number" 
+                        value={negativeMarks}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          setNegativeMarks(val);
+                          localStorage.setItem('omr_negative_marks', val.toString());
+                        }}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.9rem', fontWeight: '600', color: '#ef4444', background: '#f8fafc' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Answer Key Grid */}
+                <div style={{ flex: '2 1 360px', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '4px', borderBottom: '1px solid #f1f5f9' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Master Answer Key</span>
+                    
+                    {/* Recent Answer Keys Quick-load Dropdown */}
+                    {scanHistory.length > 0 && (
+                      <select 
+                        onChange={(e) => {
+                          const selectedId = e.target.value;
+                          if (selectedId) {
+                            const entry = scanHistory.find(h => h.id === selectedId);
+                            if (entry && entry.answerKey) {
+                              setAnswerKey(entry.answerKey);
+                              setNumQuestions(entry.numQuestions);
+                              setPositiveMarks(entry.positiveMarks);
+                              setNegativeMarks(entry.negativeMarks);
+                              setSubjectCode(entry.subjectCode === '—' ? '' : entry.subjectCode);
+                              
+                              localStorage.setItem('omr_master_answer_key', JSON.stringify(entry.answerKey));
+                              localStorage.setItem('omr_num_questions', entry.numQuestions.toString());
+                              localStorage.setItem('omr_positive_marks', entry.positiveMarks.toString());
+                              localStorage.setItem('omr_negative_marks', entry.negativeMarks.toString());
                             }
                           }
-                        }
-                      }}
-                      style={{ 
-                        padding: '6px 12px', 
-                        borderRadius: '8px', 
-                        border: '1px solid #cbd5e1', 
-                        fontSize: '0.8rem', 
-                        fontWeight: '600', 
-                        cursor: 'pointer', 
-                        background: 'white',
-                        outline: 'none',
-                        color: '#475569'
-                      }}
-                    >
-                      <option value="">Recent Keys...</option>
-                      {scanHistory.map(h => (
-                        <option key={h.id} value={h.id}>
-                          {h.studentName} - {h.subjectCode} ({h.date.split(',')[0]})
-                        </option>
-                      ))}
-                    </select>
+                        }}
+                        style={{ 
+                          padding: '4px 8px', 
+                          borderRadius: '6px', 
+                          border: '1px solid #cbd5e1', 
+                          fontSize: '0.75rem', 
+                          fontWeight: '600', 
+                          cursor: 'pointer', 
+                          background: 'white',
+                          outline: 'none',
+                          color: '#475569'
+                        }}
+                      >
+                        <option value="">Quick Load Key...</option>
+                        {scanHistory.map(h => (
+                          <option key={h.id} value={h.id}>
+                            {h.studentName} ({h.date.split(',')[0]})
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
-                )}
-              </div>
-              
-              <div style={{ maxHeight: '400px', overflowY: 'auto', paddingRight: '10px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '12px' }}>
-                  {Array.from({ length: numQuestions }).map((_, idx) => {
-                    const qNo = idx + 1;
-                    return (
-                      <div key={qNo} style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: '#f8fafc', padding: '8px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                        <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '700', textAlign: 'center' }}>Q{qNo}</span>
-                        <select 
-                          value={answerKey[qNo] || 'A'}
-                          onChange={(e) => handleAnswerChange(qNo, e.target.value)}
-                          style={{ padding: '8px 4px', borderRadius: '6px', border: '1px solid #cbd5e1', textAlign: 'center', fontWeight: '700', cursor: 'pointer', background: 'white', fontSize: '0.9rem' }}
-                        >
-                          <option value="A">A</option>
-                          <option value="B">B</option>
-                          <option value="C">C</option>
-                          <option value="D">D</option>
-                          <option value="BONUS">BONUS</option>
-                        </select>
-                      </div>
-                    );
-                  })}
+                  
+                  <div style={{ maxHeight: '200px', overflowY: 'auto', paddingRight: '4px', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px', background: '#f8fafc' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: '8px' }}>
+                      {Array.from({ length: numQuestions }).map((_, idx) => {
+                        const qNo = idx + 1;
+                        return (
+                          <div key={qNo} style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: 'white', padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '700' }}>Q{qNo}</span>
+                            <select 
+                              value={answerKey[qNo] || 'A'}
+                              onChange={(e) => handleAnswerChange(qNo, e.target.value)}
+                              style={{ width: '100%', padding: '4px 2px', borderRadius: '4px', border: '1px solid #cbd5e1', textAlign: 'center', fontWeight: '700', cursor: 'pointer', background: 'white', fontSize: '0.8rem' }}
+                            >
+                              <option value="A">A</option>
+                              <option value="B">B</option>
+                              <option value="C">C</option>
+                              <option value="D">D</option>
+                              <option value="BONUS">BNS</option>
+                            </select>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '30px', borderTop: '1px solid #f1f5f9', paddingTop: '30px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
                 <button 
                   onClick={() => setActiveStep(2)}
-                  style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '14px 32px', borderRadius: '12px', fontWeight: '700', fontSize: '1.05rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 14px rgba(59,130,246,0.3)', transition: 'all 0.2s' }}
+                  style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '10px 24px', borderRadius: '10px', fontWeight: '700', fontSize: '0.95rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 10px rgba(59,130,246,0.2)', transition: 'all 0.2s' }}
                   onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
                   onMouseOut={e => e.currentTarget.style.transform = 'none'}
                 >
-                  Next Step: Scan Sheet <ArrowLeft size={18} style={{ transform: 'rotate(180deg)' }} />
+                  Next: Scan Sheet <ArrowLeft size={16} style={{ transform: 'rotate(180deg)' }} />
                 </button>
               </div>
             </div>
@@ -803,43 +1020,316 @@ const OMRScanner = () => {
 
         {/* Step 2: Scan */}
         {activeStep === 2 && (
-          <div className="omr-card-mobile-padding" style={{ background: 'white', borderRadius: '24px', padding: '40px', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)', textAlign: 'center' }}>
-            <h2 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '12px', color: '#1e293b' }}>Upload Completed Sheet</h2>
-            <p style={{ color: '#64748b', marginBottom: '40px', fontSize: '1.05rem' }}>Make sure the 4 corner black squares are visible in the photo.</p>
+          <div className="omr-card-mobile-padding" style={{ background: 'white', borderRadius: '20px', padding: isCameraActive ? '16px' : '24px', boxShadow: '0 10px 30px -10px rgba(0,0,0,0.06)', textAlign: 'center', width: '100%' }}>
+            {!isCameraActive && (
+              <>
+                <h2 style={{ fontSize: '1.4rem', fontWeight: '800', marginBottom: '8px', color: '#1e293b' }}>Scan or Upload OMR Sheet</h2>
+                <p style={{ color: '#64748b', marginBottom: '20px', fontSize: '0.95rem' }}>Capture a photo or upload an image/PDF. Make sure the 4 corner black squares are visible.</p>
+              </>
+            )}
 
             {error && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '16px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '24px', fontWeight: '600' }}>
-                <AlertCircle size={20} /> {error}
+              <div style={{
+                position: 'fixed',
+                top: '24px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: '#ef4444',
+                color: 'white',
+                padding: '16px 24px',
+                borderRadius: '12px',
+                zIndex: 9999,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                fontWeight: '700',
+                fontSize: '0.95rem',
+                boxShadow: '0 10px 25px rgba(239, 68, 68, 0.4)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                maxWidth: '90%',
+                width: '500px',
+                animation: 'shake 0.5s ease-in-out'
+              }}>
+                <AlertCircle size={20} color="white" />
+                <span style={{ flex: 1, textAlign: 'left' }}>{error}</span>
+                <button 
+                  onClick={() => setError('')} 
+                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.1rem', padding: '4px' }}
+                >
+                  ✕
+                </button>
               </div>
             )}
 
             {!image ? (
-              <div 
-                onClick={() => fileInputRef.current?.click()}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleImageUpload}
-                style={{
-                  border: '2px dashed #cbd5e1', borderRadius: '24px', padding: '60px 20px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', background: '#f8fafc', transition: 'all 0.2s ease'
-                }}
-                onMouseOver={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.background = '#eff6ff'; }}
-                onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}
-              >
-                <div style={{ background: 'white', padding: '20px', borderRadius: '50%', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
-                  <Camera size={40} color="#3b82f6" />
+              isScanning ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 20px', gap: '16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', maxWidth: '850px', margin: '0 auto' }}>
+                  <div style={{ width: '40px', height: '40px', border: '4px solid rgba(59,130,246,0.1)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ fontWeight: '700', fontSize: '1rem', color: '#1e293b', margin: '0 0 4px 0' }}>{scanStatusText}</p>
+                    <p style={{ color: '#3b82f6', fontWeight: '800', margin: '0 0 12px 0', fontSize: '0.95rem' }}>{scanProgress}%</p>
+                  </div>
+                  <div style={{ width: '100%', maxWidth: '260px', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                    <div style={{ width: `${scanProgress}%`, height: '100%', background: 'linear-gradient(to right, #3b82f6, #8b5cf6)', transition: 'width 0.2s ease' }} />
+                  </div>
+                  <button 
+                    onClick={handleRetake}
+                    style={{ background: 'white', color: '#ef4444', border: '1px solid #fee2e2', padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer', marginTop: '4px' }}
+                  >
+                    Cancel
+                  </button>
                 </div>
-                <div>
-                  <p style={{ fontWeight: '700', fontSize: '1.2rem', margin: '0 0 6px 0', color: '#1e293b' }}>Click or drag to upload</p>
-                  <p style={{ color: '#94a3b8', fontSize: '0.95rem', margin: 0, fontWeight: '500' }}>PNG, JPG, PDF up to 10MB</p>
+              ) : isCameraActive ? (
+                <div style={{ background: '#0f172a', borderRadius: '16px', padding: '16px', border: '1px solid #334155', textAlign: 'center', maxWidth: '850px', margin: '0 auto' }}>
+                  <div style={{ position: 'relative', width: '100%', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#000' }}>
+                    <video 
+                      ref={videoRef} 
+                      autoPlay 
+                      playsInline 
+                      style={{ width: '100%', maxHeight: '480px', display: 'block', objectFit: 'contain' }}
+                    ></video>
+                    
+                    {/* Camera Overlay Guide Lines */}
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      pointerEvents: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '24px'
+                    }}>
+                      <div style={{
+                        height: '92%',
+                        aspectRatio: '0.707',
+                        border: '2px dashed rgba(16, 185, 129, 0.5)',
+                        borderRadius: '12px',
+                        position: 'relative',
+                        boxSizing: 'border-box',
+                        boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.4)'
+                      }}>
+                        {/* 4 Corner Bracket Markers */}
+                        {/* Top Left */}
+                        <div style={{
+                          position: 'absolute',
+                          top: '-4px',
+                          left: '-4px',
+                          width: '24px',
+                          height: '24px',
+                          borderLeft: '4px solid #10b981',
+                          borderTop: '4px solid #10b981',
+                          borderTopLeftRadius: '8px'
+                        }} />
+                        {/* Top Right */}
+                        <div style={{
+                          position: 'absolute',
+                          top: '-4px',
+                          right: '-4px',
+                          width: '24px',
+                          height: '24px',
+                          borderRight: '4px solid #10b981',
+                          borderTop: '4px solid #10b981',
+                          borderTopRightRadius: '8px'
+                        }} />
+                        {/* Bottom Left */}
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '-4px',
+                          left: '-4px',
+                          width: '24px',
+                          height: '24px',
+                          borderLeft: '4px solid #10b981',
+                          borderBottom: '4px solid #10b981',
+                          borderBottomLeftRadius: '8px'
+                        }} />
+                        {/* Bottom Right */}
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '-4px',
+                          right: '-4px',
+                          width: '24px',
+                          height: '24px',
+                          borderRight: '4px solid #10b981',
+                          borderBottom: '4px solid #10b981',
+                          borderBottomRightRadius: '8px'
+                        }} />
+
+                        {/* 4 Black Dot Placement Guides */}
+                        {/* Top-Left Target */}
+                        <div style={{
+                          position: 'absolute',
+                          top: '12px',
+                          left: '12px',
+                          width: '18px',
+                          height: '18px',
+                          border: '2px solid #10b981',
+                          borderRadius: '50%',
+                          background: 'rgba(16, 185, 129, 0.2)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          <div style={{ width: '6px', height: '6px', background: '#10b981', borderRadius: '50%' }} />
+                        </div>
+                        
+                        {/* Top-Right Target */}
+                        <div style={{
+                          position: 'absolute',
+                          top: '12px',
+                          right: '12px',
+                          width: '18px',
+                          height: '18px',
+                          border: '2px solid #10b981',
+                          borderRadius: '50%',
+                          background: 'rgba(16, 185, 129, 0.2)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          <div style={{ width: '6px', height: '6px', background: '#10b981', borderRadius: '50%' }} />
+                        </div>
+
+                        {/* Bottom-Left Target */}
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '12px',
+                          left: '12px',
+                          width: '18px',
+                          height: '18px',
+                          border: '2px solid #10b981',
+                          borderRadius: '50%',
+                          background: 'rgba(16, 185, 129, 0.2)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          <div style={{ width: '6px', height: '6px', background: '#10b981', borderRadius: '50%' }} />
+                        </div>
+
+                        {/* Bottom-Right Target */}
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '12px',
+                          right: '12px',
+                          width: '18px',
+                          height: '18px',
+                          border: '2px solid #10b981',
+                          borderRadius: '50%',
+                          background: 'rgba(16, 185, 129, 0.2)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          <div style={{ width: '6px', height: '6px', background: '#10b981', borderRadius: '50%' }} />
+                        </div>
+
+                        {/* Scanner Laser Line Animation */}
+                        <div style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: '2px',
+                          background: 'linear-gradient(90deg, transparent, #10b981, transparent)',
+                          animation: 'scanLine 3s linear infinite',
+                          boxShadow: '0 0 8px #10b981'
+                        }} />
+
+                        {/* Text Instruction */}
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '15px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          background: 'rgba(15, 23, 42, 0.85)',
+                          color: '#10b981',
+                          padding: '6px 14px',
+                          borderRadius: '20px',
+                          fontSize: '0.75rem',
+                          fontWeight: '700',
+                          whiteSpace: 'nowrap',
+                          border: '1px solid rgba(16, 185, 129, 0.3)',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                        }}>
+                          Align 4 corner black squares in targets
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '16px', justifyContent: 'center' }}>
+                    <button 
+                      onClick={stopCamera} 
+                      style={{ background: 'white', color: '#ef4444', border: '1px solid #fee2e2', padding: '10px 24px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '0.9rem' }}
+                    >
+                      Cancel Camera
+                    </button>
+                  </div>
                 </div>
-                <input 
-                  type="file" 
-                  ref={fileInputRef}
-                  onChange={handleImageUpload}
-                  accept="image/png, image/jpeg, image/jpg, application/pdf"
-                  style={{ display: 'none' }}
-                />
-              </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '850px', margin: '0 auto' }}>
+                  {/* File Upload Area */}
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleImageUpload}
+                    style={{
+                      border: '2px dashed #cbd5e1', borderRadius: '16px', padding: '24px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', background: '#f8fafc', transition: 'all 0.2s ease'
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.background = '#eff6ff'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}
+                  >
+                    <div style={{ background: 'white', padding: '12px', borderRadius: '50%', boxShadow: '0 4px 10px rgba(0,0,0,0.03)' }}>
+                      <FileImage size={28} color="#3b82f6" />
+                    </div>
+                    <div>
+                      <p style={{ fontWeight: '700', fontSize: '1.05rem', margin: '0 0 2px 0', color: '#1e293b' }}>Upload OMR Sheet</p>
+                      <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: 0, fontWeight: '500' }}>Click/drag Image or PDF (Max 10MB)</p>
+                    </div>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef}
+                      onChange={handleImageUpload}
+                      accept="image/png, image/jpeg, image/jpg, application/pdf"
+                      style={{ display: 'none' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <div style={{ flex: 1, height: '1px', backgroundColor: '#e2e8f0' }} />
+                    <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase' }}>or</span>
+                    <div style={{ flex: 1, height: '1px', backgroundColor: '#e2e8f0' }} />
+                  </div>
+
+                  {/* Device Camera Button */}
+                  <button
+                    onClick={startCamera}
+                    style={{
+                      background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+                      color: 'white',
+                      border: 'none',
+                      padding: '14px 24px',
+                      borderRadius: '12px',
+                      fontWeight: '700',
+                      fontSize: '0.95rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 12px rgba(59,130,246,0.2)',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
+                    onMouseOut={e => e.currentTarget.style.transform = 'none'}
+                  >
+                    <Camera size={18} /> Take Photo with Camera
+                  </button>
+                </div>
+              )
             ) : (
               <div style={{ background: '#f8fafc', borderRadius: '24px', padding: '24px', border: '1px solid #e2e8f0' }}>
                 <img src={image} alt="OMR Sheet" style={{ maxWidth: '100%', maxHeight: '400px', borderRadius: '16px', objectFit: 'contain', marginBottom: '30px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }} />
@@ -956,65 +1446,67 @@ const OMRScanner = () => {
               </div>
             </div>
 
-            {/* Score Cards - compact single row */}
-            <div className="omr-score-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
-              <div style={{ background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', borderRadius: '16px', padding: '16px 12px', color: 'white', textAlign: 'center', boxShadow: '0 8px 20px rgba(59,130,246,0.3)' }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: '600', opacity: 0.9, marginBottom: '4px' }}>Total Score</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: '800', lineHeight: 1 }}>{scanResult.totalScore}</div>
-                <div style={{ fontSize: '0.7rem', opacity: 0.7, marginTop: '4px' }}>/ {scanResult.maxScore}</div>
+            {/* Score & Distribution Row */}
+            <div className="omr-score-dist-row" style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              <div className="omr-score-grid" style={{ flex: '3 1 450px', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
+                <div style={{ background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', borderRadius: '16px', padding: '16px 12px', color: 'white', textAlign: 'center', boxShadow: '0 8px 20px rgba(59,130,246,0.3)' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: '600', opacity: 0.9, marginBottom: '4px' }}>Total Score</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', lineHeight: 1 }}>{scanResult.totalScore}</div>
+                  <div style={{ fontSize: '0.7rem', opacity: 0.7, marginTop: '4px' }}>/ {scanResult.maxScore}</div>
+                </div>
+                <div style={{ background: 'white', border: '1px solid #dcfce7', borderRadius: '16px', padding: '16px 12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#16a34a', marginBottom: '4px' }}>Correct</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#15803d', lineHeight: 1 }}>{scanResult.correctCount}</div>
+                </div>
+                <div style={{ background: 'white', border: '1px solid #fee2e2', borderRadius: '16px', padding: '16px 12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#ef4444', marginBottom: '4px' }}>Incorrect</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#b91c1c', lineHeight: 1 }}>{scanResult.incorrectCount}</div>
+                </div>
+                <div style={{ background: 'white', border: '1px solid #e0e7ff', borderRadius: '16px', padding: '16px 12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#4f46e5', marginBottom: '4px' }}>Attempted</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#4338ca', lineHeight: 1 }}>{scanResult.correctCount + scanResult.incorrectCount}</div>
+                </div>
+                <div style={{ background: 'white', border: '1px solid #f1f5f9', borderRadius: '16px', padding: '16px 12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>Unattempted</div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#475569', lineHeight: 1 }}>{scanResult.unattemptedCount}</div>
+                </div>
               </div>
-              <div style={{ background: 'white', border: '1px solid #dcfce7', borderRadius: '16px', padding: '16px 12px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#16a34a', marginBottom: '4px' }}>Correct</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#15803d', lineHeight: 1 }}>{scanResult.correctCount}</div>
-              </div>
-              <div style={{ background: 'white', border: '1px solid #fee2e2', borderRadius: '16px', padding: '16px 12px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#ef4444', marginBottom: '4px' }}>Incorrect</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#b91c1c', lineHeight: 1 }}>{scanResult.incorrectCount}</div>
-              </div>
-              <div style={{ background: 'white', border: '1px solid #e0e7ff', borderRadius: '16px', padding: '16px 12px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#4f46e5', marginBottom: '4px' }}>Attempted</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#4338ca', lineHeight: 1 }}>{scanResult.correctCount + scanResult.incorrectCount}</div>
-              </div>
-              <div style={{ background: 'white', border: '1px solid #f1f5f9', borderRadius: '16px', padding: '16px 12px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>Unattempted</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#475569', lineHeight: 1 }}>{scanResult.unattemptedCount}</div>
-              </div>
-            </div>
 
-            {/* Answer Distribution A/B/C/D */}
-            {(() => {
-              const dist = { A: 0, B: 0, C: 0, D: 0, U: 0 };
-              scanResult.details.forEach(d => { dist[d.scanned] = (dist[d.scanned] || 0) + 1; });
-              const attempted = dist.A + dist.B + dist.C + dist.D;
-              const colors = { A: '#3b82f6', B: '#8b5cf6', C: '#f59e0b', D: '#10b981' };
-              return (
-                <div style={{ background: 'white', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)', border: '1px solid #e2e8f0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#1e293b' }}>Answer Distribution</span>
-                    <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: '600' }}>{attempted} answered</span>
-                  </div>
-                  {/* Visual bar */}
-                  <div style={{ display: 'flex', height: '10px', borderRadius: '5px', overflow: 'hidden', marginBottom: '12px', background: '#f1f5f9' }}>
-                    {['A','B','C','D'].map(opt => (
-                      dist[opt] > 0 ? <div key={opt} style={{ width: `${(dist[opt] / numQuestions) * 100}%`, background: colors[opt], transition: 'width 0.5s ease' }} /> : null
-                    ))}
-                  </div>
-                  {/* Legend */}
-                  <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                    {['A','B','C','D'].map(opt => (
-                      <div key={opt} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div style={{ width: '10px', height: '10px', borderRadius: '3px', background: colors[opt] }} />
-                        <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#475569' }}>{opt}: {dist[opt]}</span>
+              {/* Answer Distribution A/B/C/D */}
+              {(() => {
+                const dist = { A: 0, B: 0, C: 0, D: 0, U: 0 };
+                scanResult.details.forEach(d => { dist[d.scanned] = (dist[d.scanned] || 0) + 1; });
+                const attempted = dist.A + dist.B + dist.C + dist.D;
+                const colors = { A: '#3b82f6', B: '#8b5cf6', C: '#f59e0b', D: '#10b981' };
+                return (
+                  <div style={{ flex: '2 1 300px', background: 'white', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#1e293b' }}>Answer Distribution</span>
+                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: '600' }}>{attempted} answered</span>
+                    </div>
+                    {/* Visual bar */}
+                    <div style={{ display: 'flex', height: '10px', borderRadius: '5px', overflow: 'hidden', marginBottom: '8px', background: '#f1f5f9' }}>
+                      {['A','B','C','D'].map(opt => (
+                        dist[opt] > 0 ? <div key={opt} style={{ width: `${(dist[opt] / numQuestions) * 100}%`, background: colors[opt], transition: 'width 0.5s ease' }} /> : null
+                      ))}
+                    </div>
+                    {/* Legend */}
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                      {['A','B','C','D'].map(opt => (
+                        <div key={opt} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: colors[opt] }} />
+                          <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#475569' }}>{opt}: {dist[opt]}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#cbd5e1' }} />
+                        <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8' }}>Blank: {dist.U}</span>
                       </div>
-                    ))}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#cbd5e1' }} />
-                      <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#94a3b8' }}>Blank: {dist.U}</span>
                     </div>
                   </div>
-                </div>
-              );
-            })()}
+                );
+              })()}
+            </div>
 
             {/* Detailed Table */}
             <div className="omr-card-mobile-padding" style={{ background: 'white', borderRadius: '24px', padding: '24px', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)' }}>
