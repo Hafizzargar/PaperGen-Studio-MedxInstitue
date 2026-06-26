@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { FileText, ArrowRight, BookOpen, FlaskConical, Dna, Layers, FolderOpen, ShieldCheck } from 'lucide-react';
+import { FileText, ArrowRight, BookOpen, FlaskConical, Dna, Layers, FolderOpen, ShieldCheck, BrainCircuit } from 'lucide-react';
 import PDFMerger from '../components/PDFMerger';
 import PDFRebrander from '../components/PDFRebrander';
 import CustomAlert from '../components/CustomAlert';
@@ -322,6 +322,16 @@ export default function Dashboard() {
           actionColor="#8b5cf6"
           actionHover="#7c3aed"
           onClick={() => setShowRebrander(true)} 
+        />
+
+        <CreationCard 
+          title="AI OMR Scanner" 
+          desc="Upload an OMR sheet and automatically evaluate marks using Vision AI." 
+          icon={<BrainCircuit size={24} />} 
+          gradient="#14b8a6"
+          actionColor="#14b8a6"
+          actionHover="#0d9488"
+          onClick={() => navigate('/omr-scanner')} 
         />
 
       </div>

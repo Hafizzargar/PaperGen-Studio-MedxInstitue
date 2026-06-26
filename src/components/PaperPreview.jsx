@@ -144,7 +144,7 @@ const PaperPreview = forwardRef(({ questions, targetCode, isShuffled, onRemoveQu
     }
     
     setPages(newPages);
-  }, [questions, measurementTrigger, isShuffled, targetCode]); // Also trigger if shuffle changes
+  }, [questions, measurementTrigger, isShuffled, targetCode, flatItems]); // Also trigger if shuffle changes
 
   const renderItem = (item) => {
     if (item.type === 'header') {
