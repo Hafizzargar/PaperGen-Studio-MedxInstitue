@@ -339,6 +339,61 @@ const OMRScanner = () => {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', color: '#1e293b', fontFamily: 'system-ui, sans-serif' }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .omr-scanner-layout {
+            flex-direction: column !important;
+            gap: 16px !important;
+            padding: 0 12px !important;
+            margin: 15px auto !important;
+          }
+          .omr-scanner-sidebar {
+            width: 100% !important;
+            min-width: 100% !important;
+            position: static !important;
+            flex-direction: row !important;
+            justify-content: space-around !important;
+            padding: 12px 8px !important;
+            flex-wrap: wrap !important;
+            gap: 10px !important;
+          }
+          .omr-step-item {
+            flex: 1 !important;
+            min-width: 75px !important;
+            padding: 8px 4px !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            gap: 4px !important;
+            text-align: center !important;
+          }
+          .omr-step-item span {
+            font-size: 0.7rem !important;
+            text-align: center !important;
+          }
+          .omr-step-line {
+            display: none !important;
+          }
+          .omr-history-section {
+            width: 100% !important;
+            margin-top: 10px !important;
+          }
+          .omr-history-list {
+            max-height: 160px !important;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+            display: grid !important;
+            gap: 8px !important;
+          }
+          .omr-score-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+          .omr-score-grid > div:first-child {
+            grid-column: span 2 !important;
+          }
+          .omr-student-banner {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+        }
+      `}</style>
       
       {/* Header */}
       <div style={{
@@ -369,10 +424,10 @@ const OMRScanner = () => {
         </div>
       </div>
 
-      <div style={{ maxWidth: '1200px', margin: '30px auto', padding: '0 20px', display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+      <div className="omr-scanner-layout" style={{ maxWidth: '1200px', margin: '30px auto', padding: '0 20px', display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
         
         {/* Vertical Step Indicator - Left Sidebar */}
-        <div style={{ 
+        <div className="omr-scanner-sidebar" style={{ 
           width: '200px', 
           minWidth: '200px',
           background: 'white', 
@@ -390,8 +445,9 @@ const OMRScanner = () => {
             { id: 2, name: 'Scan Paper' },
             { id: 3, name: 'Results' }
           ].map((step, idx) => (
-            <div key={step.id}>
+            <div key={step.id} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
               <div 
+                className="omr-step-item"
                 onClick={() => step.id < activeStep ? setActiveStep(step.id) : null}
                 style={{
                   padding: '14px 12px',
@@ -417,25 +473,28 @@ const OMRScanner = () => {
               </div>
               {/* Connecting line between steps */}
               {idx < 2 && (
-                <div style={{ 
-                  width: '2px', height: '16px', 
-                  background: activeStep > step.id ? '#10b981' : '#e2e8f0', 
-                  marginLeft: '29px',
-                  transition: 'background 0.3s ease'
-                }} />
+                <div 
+                  className="omr-step-line"
+                  style={{ 
+                    width: '2px', height: '16px', 
+                    background: activeStep > step.id ? '#10b981' : '#e2e8f0', 
+                    marginLeft: '29px',
+                    transition: 'background 0.3s ease'
+                  }} 
+                />
               )}
             </div>
           ))}
 
           {/* Evaluation History Section */}
           {scanHistory.length > 0 && (
-            <>
+            <div className="omr-history-section" style={{ width: '100%' }}>
               <div style={{ margin: '20px 0 10px 0', borderTop: '1px solid #f1f5f9', paddingTop: '15px' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   History (7 Days)
                 </span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '320px', overflowY: 'auto', paddingRight: '4px' }}>
+              <div className="omr-history-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '320px', overflowY: 'auto', paddingRight: '4px' }}>
                 {scanHistory.map(entry => (
                   <div 
                     key={entry.id}
@@ -491,7 +550,7 @@ const OMRScanner = () => {
                   </div>
                 ))}
               </div>
-            </>
+            </div>
           )}
         </div>
 
@@ -837,7 +896,7 @@ const OMRScanner = () => {
             </div>
 
             {/* Student Info Banner - always shown */}
-            <div style={{
+            <div className="omr-student-banner" style={{
               background: 'linear-gradient(135deg, #1e1b4b, #312e81)',
               borderRadius: '20px',
               padding: '20px 28px',
@@ -870,7 +929,7 @@ const OMRScanner = () => {
             </div>
 
             {/* Score Cards - compact single row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
+            <div className="omr-score-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
               <div style={{ background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', borderRadius: '16px', padding: '16px 12px', color: 'white', textAlign: 'center', boxShadow: '0 8px 20px rgba(59,130,246,0.3)' }}>
                 <div style={{ fontSize: '0.75rem', fontWeight: '600', opacity: 0.9, marginBottom: '4px' }}>Total Score</div>
                 <div style={{ fontSize: '1.8rem', fontWeight: '800', lineHeight: 1 }}>{scanResult.totalScore}</div>
