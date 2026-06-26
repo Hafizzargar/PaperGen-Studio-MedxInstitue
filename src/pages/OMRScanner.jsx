@@ -568,6 +568,58 @@ const OMRScanner = () => {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', color: '#1e293b', fontFamily: 'system-ui, sans-serif' }}>
       <style>{`
+        .omr-scanner-sidebar {
+          width: 200px;
+          min-width: 200px;
+          background: white; 
+          border-radius: 20px; 
+          padding: 20px 16px; 
+          box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+          position: sticky;
+          top: 80px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          transition: all 0.3s ease;
+        }
+        .omr-scanner-content {
+          flex: 1;
+          min-width: 0;
+        }
+        .omr-score-grid {
+          flex: 3 1 450px;
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 10px;
+        }
+        .omr-score-dist-card {
+          flex: 2 1 300px;
+          background: white;
+          border-radius: 16px;
+          padding: 16px 20px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+          border: 1px solid #e2e8f0;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+        }
+        .omr-results-container {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          width: 100%;
+        }
+        .omr-student-banner {
+          background: linear-gradient(135deg, #1e1b4b, #312e81);
+          border-radius: 20px;
+          padding: 20px 28px;
+          color: white;
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+          gap: 16px;
+          box-shadow: 0 10px 25px rgba(30,27,75,0.3);
+        }
+
         @media (max-width: 768px) {
           .omr-sidebar-templates {
             display: none !important;
@@ -576,7 +628,7 @@ const OMRScanner = () => {
             flex-direction: column !important;
             gap: 16px !important;
           }
-          .omr-score-dist-row > div:last-child {
+          .omr-score-dist-card {
             flex: none !important;
             width: 100% !important;
           }
@@ -588,7 +640,7 @@ const OMRScanner = () => {
             width: 100% !important;
             box-sizing: border-box !important;
           }
-          .omr-scanner-layout > div:last-child {
+          .omr-scanner-content {
             width: 100% !important;
             min-width: 0 !important;
             overflow: hidden !important;
@@ -642,6 +694,8 @@ const OMRScanner = () => {
             padding: 16px 20px !important;
             border-radius: 16px !important;
             gap: 12px !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
           }
           .omr-scanner-header {
             padding: 16px 16px !important;
@@ -668,6 +722,11 @@ const OMRScanner = () => {
           }
           .omr-table-wrapper table {
             min-width: 550px !important;
+          }
+          .omr-results-container {
+            width: 100% !important;
+            overflow: hidden !important;
+            min-width: 0 !important;
           }
         }
         @keyframes spin {
@@ -719,19 +778,7 @@ const OMRScanner = () => {
       <div className="omr-scanner-layout" style={{ maxWidth: '1440px', margin: '15px auto', padding: '0 20px', display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
         
         {/* Vertical Step Indicator - Left Sidebar */}
-        <div className="omr-scanner-sidebar" style={{ 
-          width: '200px', 
-          minWidth: '200px',
-          background: 'white', 
-          borderRadius: '20px', 
-          padding: '20px 16px', 
-          boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
-          position: 'sticky',
-          top: '80px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '4px'
-        }}>
+        <div className="omr-scanner-sidebar">
           {[
             { id: 1, name: 'Setup Rules' },
             { id: 2, name: 'Scan Paper' },
@@ -870,7 +917,7 @@ const OMRScanner = () => {
         </div>
 
         {/* Main Content Area */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="omr-scanner-content">
 
         {/* Step 1: Setup */}
         {activeStep === 1 && (
@@ -1430,7 +1477,7 @@ const OMRScanner = () => {
 
         {/* Step 3: Results */}
         {activeStep === 3 && scanResult && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className="omr-results-container">
             
             {/* Header with Scan Another Sheet Button */}
             <div className="omr-results-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '4px' }}>
@@ -1460,16 +1507,7 @@ const OMRScanner = () => {
             </div>
 
             {/* Student Info Banner - always shown */}
-            <div className="omr-student-banner" style={{
-              background: 'linear-gradient(135deg, #1e1b4b, #312e81)',
-              borderRadius: '20px',
-              padding: '20px 28px',
-              color: 'white',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-              gap: '16px',
-              boxShadow: '0 10px 25px rgba(30,27,75,0.3)'
-            }}>
+            <div className="omr-student-banner">
               <div>
                 <span style={{ fontSize: '0.7rem', fontWeight: '600', opacity: 0.6, textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '4px' }}>Student Name</span>
                 <span style={{ fontSize: '1.1rem', fontWeight: '800' }}>{studentName || '—'}</span>
@@ -1494,7 +1532,7 @@ const OMRScanner = () => {
 
             {/* Score & Distribution Row */}
             <div className="omr-score-dist-row" style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-              <div className="omr-score-grid" style={{ flex: '3 1 450px', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
+              <div className="omr-score-grid">
                 <div style={{ background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', borderRadius: '16px', padding: '16px 12px', color: 'white', textAlign: 'center', boxShadow: '0 8px 20px rgba(59,130,246,0.3)' }}>
                   <div style={{ fontSize: '0.75rem', fontWeight: '600', opacity: 0.9, marginBottom: '4px' }}>Total Score</div>
                   <div style={{ fontSize: '1.8rem', fontWeight: '800', lineHeight: 1 }}>{scanResult.totalScore}</div>
@@ -1525,7 +1563,7 @@ const OMRScanner = () => {
                 const attempted = dist.A + dist.B + dist.C + dist.D;
                 const colors = { A: '#3b82f6', B: '#8b5cf6', C: '#f59e0b', D: '#10b981' };
                 return (
-                  <div style={{ flex: '2 1 300px', background: 'white', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div className="omr-score-dist-card" style={{ background: 'white', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                       <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#1e293b' }}>Answer Distribution</span>
                       <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: '600' }}>{attempted} answered</span>
