@@ -19,9 +19,15 @@ const OMRScanner = () => {
   const pdfCanvasDataRef = useRef(null); // Stores raw PDF canvas pixels for direct reading
   
   // Settings State
-  const [numQuestions, setNumQuestions] = useState(180);
-  const [positiveMarks, setPositiveMarks] = useState(4);
-  const [negativeMarks, setNegativeMarks] = useState(-1);
+  const [numQuestions, setNumQuestions] = useState(() => {
+    return parseInt(localStorage.getItem('omr_num_questions')) || 180;
+  });
+  const [positiveMarks, setPositiveMarks] = useState(() => {
+    return parseInt(localStorage.getItem('omr_positive_marks')) || 4;
+  });
+  const [negativeMarks, setNegativeMarks] = useState(() => {
+    return parseInt(localStorage.getItem('omr_negative_marks')) || -1;
+  });
   const [answerKey, setAnswerKey] = useState({});
   const fileInputRef = useRef(null);
 
@@ -52,25 +58,34 @@ const OMRScanner = () => {
   }, []);
 
   useEffect(() => {
-    // Initialize empty answer key if needed
-    setAnswerKey(prev => {
-      if (Object.keys(prev).length === 0) {
+    try {
+      const storedKey = localStorage.getItem('omr_master_answer_key');
+      if (storedKey) {
+        setAnswerKey(JSON.parse(storedKey));
+      } else {
         const initialKey = {};
         for(let i=1; i<=180; i++) initialKey[i] = 'A';
-        return initialKey;
+        setAnswerKey(initialKey);
+        localStorage.setItem('omr_master_answer_key', JSON.stringify(initialKey));
       }
-      return prev;
-    });
+    } catch (e) {
+      console.error("Failed to load OMR master answer key:", e);
+    }
   }, []);
 
   const handleNumQuestionsChange = (e) => {
     const num = parseInt(e.target.value) || 1;
     setNumQuestions(num);
-    const newKey = { ...answerKey };
-    for(let i=1; i<=num; i++) {
-      if(!newKey[i]) newKey[i] = 'A';
-    }
-    setAnswerKey(newKey);
+    localStorage.setItem('omr_num_questions', num.toString());
+    
+    setAnswerKey(prev => {
+      const newKey = { ...prev };
+      for(let i=1; i<=num; i++) {
+        if(!newKey[i]) newKey[i] = 'A';
+      }
+      localStorage.setItem('omr_master_answer_key', JSON.stringify(newKey));
+      return newKey;
+    });
   };
 
   const handleImageUpload = (e) => {
@@ -200,10 +215,14 @@ const OMRScanner = () => {
   };
 
   const handleAnswerChange = (qNo, answer) => {
-    setAnswerKey(prev => ({
-      ...prev,
-      [qNo]: answer
-    }));
+    setAnswerKey(prev => {
+      const updated = {
+        ...prev,
+        [qNo]: answer
+      };
+      localStorage.setItem('omr_master_answer_key', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const runScan = async () => {
@@ -260,7 +279,8 @@ const OMRScanner = () => {
         result: result,
         numQuestions: numQuestions,
         positiveMarks: positiveMarks,
-        negativeMarks: negativeMarks
+        negativeMarks: negativeMarks,
+        answerKey: { ...answerKey } // Store the answer key used for this evaluation
       };
       
       setScanHistory(prev => {
@@ -288,6 +308,10 @@ const OMRScanner = () => {
     setNumQuestions(entry.numQuestions);
     setPositiveMarks(entry.positiveMarks);
     setNegativeMarks(entry.negativeMarks);
+    if (entry.answerKey) {
+      setAnswerKey(entry.answerKey);
+      localStorage.setItem('omr_master_answer_key', JSON.stringify(entry.answerKey));
+    }
     setScanResult(entry.result);
     setImage(null);
     pdfCanvasDataRef.current = null;
@@ -577,7 +601,11 @@ const OMRScanner = () => {
                   <input 
                     type="number" 
                     value={positiveMarks}
-                    onChange={(e) => setPositiveMarks(parseInt(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 0;
+                      setPositiveMarks(val);
+                      localStorage.setItem('omr_positive_marks', val.toString());
+                    }}
                     style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '1rem', fontWeight: '600', color: '#10b981', background: '#f8fafc' }}
                   />
                 </div>
@@ -586,7 +614,11 @@ const OMRScanner = () => {
                   <input 
                     type="number" 
                     value={negativeMarks}
-                    onChange={(e) => setNegativeMarks(parseInt(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 0;
+                      setNegativeMarks(val);
+                      localStorage.setItem('omr_negative_marks', val.toString());
+                    }}
                     style={{ width: '100%', padding: '14px 16px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '1rem', fontWeight: '600', color: '#ef4444', background: '#f8fafc' }}
                   />
                 </div>
